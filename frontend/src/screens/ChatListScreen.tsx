@@ -1,12 +1,11 @@
 /**
  * Chat List Screen - Main screen showing all visible chats
- * Now connected to real Telegram API
+ * With filter tabs, swipe actions, and modern UI
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
-  FlatList,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -17,81 +16,73 @@ import {
   Linking,
   ActivityIndicator,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { ChatItem } from '../components/ChatItem';
+import { SwipeableChatItem } from '../components/SwipeableChatItem';
+import { ChatListSkeleton } from '../components/SkeletonLoader';
 import { useChats } from '../hooks/useChats';
 import { useTelegram } from '../context/TelegramContext';
-import { Chat } from '../types';
+import { useChatFolders } from '../hooks/useChatFolders';
+import { Chat, ChatType } from '../types';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
+
+// Filter tabs
+const FILTER_TABS = [
+  { id: 'all', label: 'Все', icon: 'chatbubbles' },
+  { id: 'private', label: 'Личные', icon: 'person' },
+  { id: 'groups', label: 'Группы', icon: 'people' },
+  { id: 'channels', label: 'Каналы', icon: 'megaphone' },
+  { id: 'bots', label: 'Боты', icon: 'hardware-chip' },
+];
 
 export default function ChatListScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading, accountId, user } = useTelegram();
   const { visibleChats, loading, error, hideChat, reload } = useChats(accountId);
+  const { activeFilter, setActiveFilter, filterChats } = useChatFolders();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Debug logging
-  console.log('[ChatListScreen] Auth:', isAuthenticated, 'AccountId:', accountId, 'Chats:', visibleChats.length);
+  // Filter chats based on active tab
+  const filteredChats = useMemo(() => {
+    return filterChats(visibleChats, activeFilter);
+  }, [visibleChats, activeFilter, filterChats]);
 
   const handleChatPress = (chat: Chat) => {
-    // Если это канал Kraken News, открываем Telegram
+    // Kraken News - open channel feed
     if (chat.id === 'kraken_news') {
-      const telegramUrl = 'https://t.me/+GsJRkVsUS6U5OTc5';
-      
-      Linking.canOpenURL(telegramUrl)
-        .then((supported) => {
-          if (supported) {
-            Linking.openURL(telegramUrl);
-          } else {
-            Alert.alert(
-              'Kraken News',
-              'Подпишитесь на наш Telegram канал: https://t.me/+GsJRkVsUS6U5OTc5',
-              [
-                { text: 'Копировать ссылку', onPress: () => {
-                  if (Platform.OS === 'web') {
-                    navigator.clipboard.writeText(telegramUrl);
-                  }
-                }},
-                { text: 'Закрыть', style: 'cancel' }
-              ]
-            );
-          }
-        })
-        .catch((err) => {
-          console.error('Error opening Telegram:', err);
-          Alert.alert('Ошибка', 'Не удалось открыть Telegram канал');
-        });
+      router.push('/channel/kraken_news');
       return;
     }
     
-    // Для обычных чатов открываем экран чата
-    // @ts-ignore - dynamic route
+    // Regular chat
     router.push(`/chat/${chat.id}`);
   };
 
-  const handleChatLongPress = (chat: Chat) => {
-    if (chat.isPinned || chat.id === 'kraken_news') {
-      return;
-    }
-
+  const handleChatDelete = (chatId: string) => {
     Alert.alert(
-      'Скрыть чат',
-      `Скрыть чат с "${chat.title}"?`,
+      'Удалить чат',
+      'Чат будет удалён из списка',
       [
         { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Скрыть',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await hideChat(chat.id);
-            if (success) {
-              Alert.alert('Чат скрыт', 'Чат перемещён в скрытые');
-            }
-          },
-        },
+        { text: 'Удалить', style: 'destructive', onPress: () => hideChat(chatId) },
       ]
     );
+  };
+
+  const handleChatHide = async (chatId: string) => {
+    const success = await hideChat(chatId);
+    if (success) {
+      Alert.alert('Готово', 'Чат скрыт. Найти его можно в скрытых чатах.');
+    }
+  };
+
+  const handleChatPin = (chatId: string) => {
+    Alert.alert('Закрепить', 'Функция закрепления в разработке');
+  };
+
+  const handleChatMarkRead = (chatId: string) => {
+    Alert.alert('Прочитано', 'Чат отмечен как прочитанный');
   };
 
   const handleRefresh = async () => {
@@ -101,24 +92,36 @@ export default function ChatListScreen() {
   };
 
   const handleSettingsPress = () => {
-    // @ts-ignore
     router.push('/settings');
   };
 
   const handleLoginPress = () => {
-    // @ts-ignore
     router.push('/telegram-login');
   };
 
   // Show loading while checking auth
   if (authLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.neonBlue} />
-        <Text style={styles.loadingText}>Проверка сессии...</Text>
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.neonBlue} />
+          <Text style={styles.loadingText}>Проверка сессии...</Text>
+        </View>
       </View>
     );
   }
+
+  const renderChatItem = ({ item }: { item: Chat }) => (
+    <SwipeableChatItem
+      chat={item}
+      onPress={() => handleChatPress(item)}
+      onDelete={item.isPinned ? undefined : () => handleChatDelete(item.id)}
+      onHide={item.isPinned ? undefined : () => handleChatHide(item.id)}
+      onPin={() => handleChatPin(item.id)}
+      onMarkRead={() => handleChatMarkRead(item.id)}
+    />
+  );
 
   return (
     <View style={styles.container}>
@@ -154,6 +157,38 @@ export default function ChatListScreen() {
         </View>
       )}
 
+      {/* Filter Tabs */}
+      <View style={styles.tabsContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsContent}
+        >
+          {FILTER_TABS.map((tab) => (
+            <TouchableOpacity
+              key={tab.id}
+              style={[
+                styles.tab,
+                activeFilter === tab.id && styles.tabActive,
+              ]}
+              onPress={() => setActiveFilter(tab.id)}
+            >
+              <Ionicons 
+                name={tab.icon as any} 
+                size={18} 
+                color={activeFilter === tab.id ? COLORS.neonBlue : COLORS.textSecondary} 
+              />
+              <Text style={[
+                styles.tabLabel,
+                activeFilter === tab.id && styles.tabLabelActive,
+              ]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {/* Login prompt for non-authenticated users */}
       {!isAuthenticated && (
         <TouchableOpacity style={styles.loginPrompt} onPress={handleLoginPress}>
@@ -176,71 +211,32 @@ export default function ChatListScreen() {
 
       {/* Chat List */}
       {loading && !refreshing ? (
-        <View style={styles.loadingChats}>
-          <ActivityIndicator size="small" color={COLORS.neonBlue} />
-          <Text style={styles.loadingChatsText}>Загрузка чатов...</Text>
-        </View>
-      ) : Platform.OS === 'web' ? (
-        <ScrollView
-          style={{flex: 1}}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={COLORS.neonBlue}
-              colors={[COLORS.neonBlue]}
-            />
-          }
-        >
-          {visibleChats.length > 0 ? (
-            visibleChats.map((chat) => (
-              <ChatItem
-                key={chat.id}
-                chat={chat}
-                onPress={handleChatPress}
-                onLongPress={handleChatLongPress}
-              />
-            ))
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="chatbubbles-outline" size={64} color={COLORS.textDim} />
-              <Text style={styles.emptyText}>Нет чатов</Text>
-            </View>
-          )}
-        </ScrollView>
+        <ChatListSkeleton count={8} />
       ) : (
-        <FlatList
-          key={`chat-list-${visibleChats.length}`}
-          data={visibleChats}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <ChatItem
-              chat={item}
-              onPress={handleChatPress}
-              onLongPress={handleChatLongPress}
-            />
-          )}
-          contentContainerStyle={styles.listContent}
-          removeClippedSubviews={false}
-          initialNumToRender={20}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={COLORS.neonBlue}
-              colors={[COLORS.neonBlue]}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="chatbubbles-outline" size={64} color={COLORS.textDim} />
-              <Text style={styles.emptyText}>Нет чатов</Text>
-            </View>
-          }
-        />
+        <View style={{ flex: 1 }}>
+          <FlashList
+            data={filteredChats}
+            renderItem={renderChatItem}
+            keyExtractor={(item) => item.id}
+            estimatedItemSize={72}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={COLORS.neonBlue}
+                colors={[COLORS.neonBlue]}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="chatbubbles-outline" size={64} color={COLORS.textDim} />
+                <Text style={styles.emptyText}>
+                  {activeFilter === 'all' ? 'Нет чатов' : 'Нет чатов в этой категории'}
+                </Text>
+              </View>
+            }
+          />
+        </View>
       )}
     </View>
   );
@@ -253,7 +249,6 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: COLORS.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -325,6 +320,36 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     marginLeft: SPACING.sm,
   },
+  tabsContainer: {
+    backgroundColor: COLORS.backgroundLight,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  tabsContent: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginRight: SPACING.sm,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.backgroundCard,
+  },
+  tabActive: {
+    backgroundColor: 'rgba(0, 242, 255, 0.15)',
+  },
+  tabLabel: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginLeft: SPACING.xs,
+  },
+  tabLabelActive: {
+    color: COLORS.neonBlue,
+    fontWeight: '600',
+  },
   loginPrompt: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -362,20 +387,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     marginLeft: SPACING.sm,
     flex: 1,
-  },
-  loadingChats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: SPACING.lg,
-  },
-  loadingChatsText: {
-    color: COLORS.textSecondary,
-    fontSize: FONT_SIZES.sm,
-    marginLeft: SPACING.sm,
-  },
-  listContent: {
-    paddingVertical: SPACING.sm,
   },
   emptyContainer: {
     alignItems: 'center',
