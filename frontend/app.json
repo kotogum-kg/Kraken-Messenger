@@ -20,9 +20,10 @@
       "bundleIdentifier": "com.kraken.messenger",
       "buildNumber": "1",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Разблокируйте скрытые чаты",
-        "NSCameraUsageDescription": "Сканируйте QR-коды",
-        "NSPhotoLibraryUsageDescription": "Выберите фото"
+        "NSCameraUsageDescription": "Отправка фото в чаты",
+        "NSPhotoLibraryUsageDescription": "Выбор фото из галереи",
+        "NSLocationWhenInUseUsageDescription": "Добавление геометок на фото",
+        "NSMicrophoneUsageDescription": "Запись голосовых сообщений"
       }
     },
     "android": {
@@ -35,7 +36,11 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT"
+        "USE_FINGERPRINT",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -47,6 +52,19 @@
       "expo-router",
       "expo-secure-store",
       "expo-local-authentication",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Добавление геометок на фото при съёмке."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Приложению необходим доступ к вашим фото для отправки в чаты.",
+          "cameraPermission": "Приложению необходим доступ к камере для съёмки фото."
+        }
+      ],
       [
         "expo-splash-screen",
         {
