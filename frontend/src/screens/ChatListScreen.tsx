@@ -11,6 +11,8 @@ import {
   Alert,
   RefreshControl,
   StatusBar,
+  ScrollView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,9 +25,16 @@ export default function ChatListScreen() {
   const router = useRouter();
   const { visibleChats, loading, hideChat, reload } = useChats();
   const [refreshing, setRefreshing] = useState(false);
+  const [, forceUpdate] = useState({});
 
   // Debug logging
   console.log('[ChatListScreen] Render - visibleChats:', visibleChats.length, 'loading:', loading);
+
+  // Force re-render when visibleChats changes
+  React.useEffect(() => {
+    console.log('[ChatListScreen] useEffect - visibleChats changed:', visibleChats.length);
+    forceUpdate({});
+  }, [visibleChats.length]);
 
   const handleChatPress = (chat: Chat) => {
     // @ts-ignore - dynamic route
@@ -83,32 +92,62 @@ export default function ChatListScreen() {
       </View>
 
       {/* Chat List */}
-      <FlatList
-        data={visibleChats}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <ChatItem
-            chat={item}
-            onPress={handleChatPress}
-            onLongPress={handleChatLongPress}
-          />
-        )}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={COLORS.neonBlue}
-            colors={[COLORS.neonBlue]}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="chatbubbles-outline" size={64} color={COLORS.textDim} />
-            <Text style={styles.emptyText}>Нет чатов</Text>
-          </View>
-        }
-      />
+      {Platform.OS === 'web' ? (
+        <ScrollView
+          style={{flex: 1}}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.neonBlue}
+              colors={[COLORS.neonBlue]}
+            />
+          }
+        >
+          {visibleChats.length > 0 ? (
+            visibleChats.map((chat) => (
+              <ChatItem
+                key={chat.id}
+                chat={chat}
+                onPress={handleChatPress}
+                onLongPress={handleChatLongPress}
+              />
+            ))
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="chatbubbles-outline" size={64} color={COLORS.textDim} />
+              <Text style={styles.emptyText}>Нет чатов</Text>
+            </View>
+          )}
+        </ScrollView>
+      ) : (
+        <FlatList
+          key={`chat-list-${visibleChats.length}`}
+          data={visibleChats}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <ChatItem
+              chat={item}
+              onPress={handleChatPress}
+              onLongPress={handleChatLongPress}
+            />
+          )}
+          contentContainerStyle={styles.listContent}
+          removeClippedSubviews={false}
+          initialNumToRender={20}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={COLORS.neonBlue}
+              colors={[COLORS.neonBlue]}
+            />
+          }
+        />
+      )}
     </View>
   );
 }

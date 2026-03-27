@@ -1,7 +1,7 @@
 /**
  * Custom hook for managing chats
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Chat } from '../types';
 import { MOCK_CHATS } from '../data/mockChats';
 import { getChats, saveChats, getHiddenChatIds, hideChat as hideChatStorage, unhideChat as unhideChatStorage } from '../utils/storage';
@@ -47,11 +47,17 @@ export const useChats = () => {
     loadChats();
   }, [loadChats]);
 
-  // Get visible chats (not hidden)
-  const visibleChats = chats.filter(chat => !hiddenChatIds.includes(chat.id));
+  // Get visible chats (not hidden) - memoized for FlatList web compatibility
+  const visibleChats = useMemo(
+    () => chats.filter(chat => !hiddenChatIds.includes(chat.id)),
+    [chats, hiddenChatIds]
+  );
 
-  // Get hidden chats
-  const hiddenChats = chats.filter(chat => hiddenChatIds.includes(chat.id));
+  // Get hidden chats - memoized
+  const hiddenChats = useMemo(
+    () => chats.filter(chat => hiddenChatIds.includes(chat.id)),
+    [chats, hiddenChatIds]
+  );
 
   // Hide a chat
   const hideChat = async (chatId: string) => {
