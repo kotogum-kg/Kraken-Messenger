@@ -17,6 +17,10 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# Ensure sessions directory exists
+SESSIONS_DIR = ROOT_DIR / 'sessions'
+SESSIONS_DIR.mkdir(exist_ok=True)
+
 # Telegram API credentials
 # Get from https://my.telegram.org
 API_ID = int(os.getenv('TELEGRAM_API_ID', '0'))
