@@ -1,0 +1,231 @@
+"""
+Telegram Integration Service using Telethon
+Provides real Telegram client functionality
+"""
+from telethon import TelegramClient, events, functions, types
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
+from telethon.tl.types import InputPeerUser, InputPeerChat, InputPeerChannel
+import asyncio
+import os
+from typing import Dict, List, Optional
+import json
+from datetime import datetime
+
+# Telegram API credentials
+# Get from https://my.telegram.org
+API_ID = int(os.getenv('TELEGRAM_API_ID', '0'))
+API_HASH = os.getenv('TELEGRAM_API_HASH', '')
+
+# Storage for active clients (account_id -> TelegramClient)
+active_clients: Dict[str, TelegramClient] = {}
+
+# Storage for auth sessions (phone -> data)
+auth_sessions: Dict[str, dict] = {}
+
+
+class TelegramService:
+    """Service for managing Telegram clients"""
+    
+    @staticmethod
+    async def send_code(phone: str) -> dict:
+        """
+        Send authorization code to phone number
+        Returns phone_code_hash for sign in
+        """
+        # Create session file path
+        session_name = f"sessions/session_{phone}"
+        os.makedirs("sessions", exist_ok=True)
+        
+        # Create client
+        client = TelegramClient(session_name, API_ID, API_HASH)
+        await client.connect()
+        
+        # Send code request
+        result = await client.send_code_request(phone)
+        
+        # Store client and data for later
+        auth_sessions[phone] = {
+            'client': client,
+            'phone_code_hash': result.phone_code_hash
+        }
+        
+        return {
+            'success': True,
+            'phone': phone,
+            'phone_code_hash': result.phone_code_hash
+        }
+    
+    @staticmethod
+    async def sign_in(phone: str, code: str, password: Optional[str] = None) -> dict:
+        """
+        Sign in with code (and password if 2FA enabled)
+        Returns account info
+        """
+        if phone not in auth_sessions:
+            return {'success': False, 'error': 'Session not found. Send code first.'}
+        
+        session = auth_sessions[phone]
+        client = session['client']
+        phone_code_hash = session['phone_code_hash']
+        
+        try:
+            # Try to sign in with code
+            user = await client.sign_in(phone, code, phone_code_hash=phone_code_hash)
+        except SessionPasswordNeededError:
+            # 2FA enabled, need password
+            if not password:
+                return {'success': False, 'error': '2FA enabled. Password required.', 'needs_password': True}
+            
+            user = await client.sign_in(password=password)
+        except PhoneCodeInvalidError:
+            return {'success': False, 'error': 'Invalid code'}
+        
+        # Generate account ID
+        account_id = f"acc_{user.id}"
+        
+        # Store active client
+        active_clients[account_id] = client
+        
+        # Clean up auth session
+        del auth_sessions[phone]
+        
+        # Get user info
+        me = await client.get_me()
+        
+        return {
+            'success': True,
+            'account_id': account_id,
+            'user': {
+                'id': me.id,
+                'first_name': me.first_name,
+                'last_name': me.last_name,
+                'username': me.username,
+                'phone': me.phone
+            }
+        }
+    
+    @staticmethod
+    async def get_chats(account_id: str, limit: int = 50) -> List[dict]:
+        """
+        Get list of chats (dialogs) for account
+        """
+        if account_id not in active_clients:
+            return []
+        
+        client = active_clients[account_id]
+        
+        # Get dialogs (chats)
+        dialogs = await client.get_dialogs(limit=limit)
+        
+        chats = []
+        for dialog in dialogs:
+            # Get entity (user, chat, or channel)
+            entity = dialog.entity
+            
+            # Determine chat type
+            if isinstance(entity, types.User):
+                chat_type = 'personal'
+                title = entity.first_name or entity.username or 'Unknown'
+            elif isinstance(entity, types.Chat):
+                chat_type = 'group'
+                title = entity.title
+            elif isinstance(entity, types.Channel):
+                chat_type = 'channel' if entity.broadcast else 'supergroup'
+                title = entity.title
+            else:
+                continue
+            
+            # Get last message
+            last_message = dialog.message.message if dialog.message else ''
+            last_message_date = dialog.message.date.isoformat() if dialog.message else None
+            
+            chats.append({
+                'id': str(dialog.id),
+                'title': title,
+                'type': chat_type,
+                'unread_count': dialog.unread_count,
+                'last_message': last_message,
+                'last_message_date': last_message_date,
+                'is_pinned': dialog.pinned,
+                'is_muted': dialog.archived,
+            })
+        
+        return chats
+    
+    @staticmethod
+    async def get_messages(account_id: str, chat_id: str, limit: int = 50) -> List[dict]:
+        """
+        Get messages from specific chat
+        """
+        if account_id not in active_clients:
+            return []
+        
+        client = active_clients[account_id]
+        
+        # Get messages
+        messages = await client.get_messages(int(chat_id), limit=limit)
+        
+        result = []
+        for msg in messages:
+            if not msg:
+                continue
+            
+            # Check if message is from me
+            me = await client.get_me()
+            is_mine = msg.from_id and msg.from_id.user_id == me.id if hasattr(msg.from_id, 'user_id') else False
+            
+            result.append({
+                'id': msg.id,
+                'text': msg.message or '',
+                'date': msg.date.isoformat(),
+                'is_mine': is_mine,
+                'from_id': msg.from_id.user_id if hasattr(msg.from_id, 'user_id') else None,
+            })
+        
+        return result
+    
+    @staticmethod
+    async def send_message(account_id: str, chat_id: str, text: str) -> dict:
+        """
+        Send message to chat
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            # Send message
+            message = await client.send_message(int(chat_id), text)
+            
+            return {
+                'success': True,
+                'message_id': message.id,
+                'date': message.date.isoformat()
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    async def logout(account_id: str) -> dict:
+        """
+        Logout from account and remove session
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            await client.log_out()
+            del active_clients[account_id]
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    def get_active_accounts() -> List[str]:
+        """
+        Get list of active account IDs
+        """
+        return list(active_clients.keys())
