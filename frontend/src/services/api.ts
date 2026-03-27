@@ -235,6 +235,77 @@ class ApiService {
   }> {
     return this.request(`/telegram/download-media/${chatId}/${messageId}?account_id=${accountId}`);
   }
+
+  // Telegram - Get Sticker Sets
+  async getStickerSets(accountId: string): Promise<{
+    sticker_sets: Array<{
+      id: string;
+      title: string;
+      short_name: string;
+      count: number;
+      is_animated: boolean;
+      is_video: boolean;
+    }>;
+  }> {
+    return this.request(`/telegram/sticker-sets?account_id=${accountId}`);
+  }
+
+  // Telegram - Get Stickers from Set
+  async getStickers(accountId: string, shortName: string): Promise<{
+    stickers: Array<{
+      id: string;
+      access_hash: string;
+      emoji: string;
+      is_animated: boolean;
+      is_video: boolean;
+    }>;
+  }> {
+    return this.request(`/telegram/stickers/${shortName}?account_id=${accountId}`);
+  }
+
+  // Telegram - Send Sticker
+  async sendSticker(accountId: string, chatId: string, stickerId: string, accessHash: string): Promise<{
+    success: boolean;
+    message_id?: number;
+    date?: string;
+    error?: string;
+  }> {
+    return this.request('/telegram/send-sticker', {
+      method: 'POST',
+      body: JSON.stringify({
+        account_id: accountId,
+        chat_id: chatId,
+        sticker_id: stickerId,
+        access_hash: accessHash,
+      }),
+    });
+  }
+
+  // Telegram - Send Reaction
+  async sendReaction(accountId: string, chatId: string, messageId: number, emoji: string): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    return this.request('/telegram/send-reaction', {
+      method: 'POST',
+      body: JSON.stringify({
+        account_id: accountId,
+        chat_id: chatId,
+        message_id: messageId,
+        emoji,
+      }),
+    });
+  }
+
+  // Telegram - Get Premium Status
+  async getPremiumStatus(accountId: string): Promise<{
+    is_premium: boolean;
+    user_id?: number;
+    first_name?: string;
+    error?: string;
+  }> {
+    return this.request(`/telegram/premium-status?account_id=${accountId}`);
+  }
 }
 
 export const api = new ApiService();

@@ -576,3 +576,152 @@ class TelegramService:
                 
         except Exception as e:
             return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    async def get_sticker_sets(account_id: str) -> List[dict]:
+        """
+        Get user's saved sticker sets
+        """
+        if account_id not in active_clients:
+            return []
+        
+        client = active_clients[account_id]
+        
+        try:
+            from telethon.tl.functions.messages import GetAllStickersRequest
+            
+            result = await client(GetAllStickersRequest(hash=0))
+            
+            sets = []
+            for s in result.sets[:20]:  # Limit to 20 sets
+                sets.append({
+                    'id': str(s.id),
+                    'title': s.title,
+                    'short_name': s.short_name,
+                    'count': s.count,
+                    'is_animated': getattr(s, 'animated', False),
+                    'is_video': getattr(s, 'videos', False),
+                })
+            
+            return sets
+        except Exception as e:
+            print(f"Error getting sticker sets: {e}")
+            return []
+    
+    @staticmethod
+    async def get_stickers_from_set(account_id: str, short_name: str) -> List[dict]:
+        """
+        Get stickers from a specific set
+        """
+        if account_id not in active_clients:
+            return []
+        
+        client = active_clients[account_id]
+        
+        try:
+            from telethon.tl.functions.messages import GetStickerSetRequest
+            from telethon.tl.types import InputStickerSetShortName
+            
+            result = await client(GetStickerSetRequest(
+                stickerset=InputStickerSetShortName(short_name=short_name),
+                hash=0
+            ))
+            
+            stickers = []
+            for doc in result.documents[:50]:  # Limit to 50 stickers
+                emoji = ''
+                for pack in result.packs:
+                    if doc.id in pack.documents:
+                        emoji = pack.emoticon
+                        break
+                
+                stickers.append({
+                    'id': str(doc.id),
+                    'access_hash': str(doc.access_hash),
+                    'emoji': emoji,
+                    'is_animated': doc.mime_type == 'application/x-tgsticker',
+                    'is_video': doc.mime_type == 'video/webm',
+                })
+            
+            return stickers
+        except Exception as e:
+            print(f"Error getting stickers: {e}")
+            return []
+    
+    @staticmethod
+    async def send_sticker(account_id: str, chat_id: str, sticker_id: str, access_hash: str) -> dict:
+        """
+        Send a sticker to chat
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            from telethon.tl.types import InputDocument
+            
+            sticker = InputDocument(
+                id=int(sticker_id),
+                access_hash=int(access_hash),
+                file_reference=b''
+            )
+            
+            message = await client.send_file(
+                int(chat_id),
+                sticker
+            )
+            
+            return {
+                'success': True,
+                'message_id': message.id,
+                'date': message.date.isoformat()
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    async def send_reaction(account_id: str, chat_id: str, message_id: int, emoji: str) -> dict:
+        """
+        Send reaction to a message
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            from telethon.tl.functions.messages import SendReactionRequest
+            from telethon.tl.types import ReactionEmoji
+            
+            await client(SendReactionRequest(
+                peer=int(chat_id),
+                msg_id=message_id,
+                reaction=[ReactionEmoji(emoticon=emoji)] if emoji else None
+            ))
+            
+            return {'success': True}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    async def get_premium_status(account_id: str) -> dict:
+        """
+        Check if user has Telegram Premium
+        """
+        if account_id not in active_clients:
+            return {'is_premium': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            me = await client.get_me()
+            is_premium = getattr(me, 'premium', False)
+            
+            return {
+                'is_premium': is_premium,
+                'user_id': me.id,
+                'first_name': me.first_name,
+            }
+        except Exception as e:
+            return {'is_premium': False, 'error': str(e)}

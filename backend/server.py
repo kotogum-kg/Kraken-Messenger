@@ -65,6 +65,18 @@ class SendMediaRequest(BaseModel):
     caption: str = ''
     ttl_seconds: Optional[int] = None  # For self-destructing media
 
+class SendStickerRequest(BaseModel):
+    account_id: str
+    chat_id: str
+    sticker_id: str
+    access_hash: str
+
+class SendReactionRequest(BaseModel):
+    account_id: str
+    chat_id: str
+    message_id: int
+    emoji: str  # Empty string to remove reaction
+
 
 # ============= Original Routes =============
 
@@ -237,6 +249,64 @@ async def download_media(account_id: str, chat_id: str, message_id: int):
     """Download media from message (returns base64)"""
     try:
         result = await TelegramService.download_media(account_id, chat_id, message_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============= Stickers & Reactions Endpoints =============
+
+@api_router.get("/telegram/sticker-sets")
+async def get_sticker_sets(account_id: str):
+    """Get user's saved sticker sets"""
+    try:
+        sets = await TelegramService.get_sticker_sets(account_id)
+        return {"sticker_sets": sets}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/telegram/stickers/{short_name}")
+async def get_stickers(account_id: str, short_name: str):
+    """Get stickers from a specific set"""
+    try:
+        stickers = await TelegramService.get_stickers_from_set(account_id, short_name)
+        return {"stickers": stickers}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/telegram/send-sticker")
+async def send_sticker(request: SendStickerRequest):
+    """Send a sticker to chat"""
+    try:
+        result = await TelegramService.send_sticker(
+            request.account_id,
+            request.chat_id,
+            request.sticker_id,
+            request.access_hash
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/telegram/send-reaction")
+async def send_reaction(request: SendReactionRequest):
+    """Send reaction to a message"""
+    try:
+        result = await TelegramService.send_reaction(
+            request.account_id,
+            request.chat_id,
+            request.message_id,
+            request.emoji
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/telegram/premium-status")
+async def get_premium_status(account_id: str):
+    """Check if user has Telegram Premium"""
+    try:
+        result = await TelegramService.get_premium_status(account_id)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
