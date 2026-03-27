@@ -18,8 +18,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kraken.messenger",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Разблокируйте скрытые чаты с помощью Face ID",
+        "NSFaceIDUsageDescription": "Разблокируйте скрытые чаты",
         "NSCameraUsageDescription": "Сканируйте QR-коды",
         "NSPhotoLibraryUsageDescription": "Выберите фото"
       }
@@ -34,10 +35,7 @@
       "edgeToEdgeEnabled": true,
       "permissions": [
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -64,7 +62,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "kraken-messenger"
+        "projectId": "your-project-id-here"
       }
     }
   }
