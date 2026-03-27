@@ -13,6 +13,7 @@ import {
   StatusBar,
   ScrollView,
   Platform,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +38,38 @@ export default function ChatListScreen() {
   }, [visibleChats.length]);
 
   const handleChatPress = (chat: Chat) => {
+    // Если это канал Kraken News, открываем Telegram
+    if (chat.id === 'kraken_news') {
+      const telegramUrl = 'https://t.me/+GsJRkVsUS6U5OTc5';
+      
+      Linking.canOpenURL(telegramUrl)
+        .then((supported) => {
+          if (supported) {
+            Linking.openURL(telegramUrl);
+          } else {
+            Alert.alert(
+              'Kraken News',
+              'Подпишитесь на наш Telegram канал: https://t.me/+GsJRkVsUS6U5OTc5',
+              [
+                { text: 'Копировать ссылку', onPress: () => {
+                  // На web можно использовать navigator.clipboard
+                  if (Platform.OS === 'web') {
+                    navigator.clipboard.writeText(telegramUrl);
+                  }
+                }},
+                { text: 'Закрыть', style: 'cancel' }
+              ]
+            );
+          }
+        })
+        .catch((err) => {
+          console.error('Error opening Telegram:', err);
+          Alert.alert('Ошибка', 'Не удалось открыть Telegram канал');
+        });
+      return;
+    }
+    
+    // Для обычных чатов открываем экран чата
     // @ts-ignore - dynamic route
     router.push(`/chat/${chat.id}`);
   };

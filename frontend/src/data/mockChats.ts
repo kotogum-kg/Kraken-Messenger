@@ -9,7 +9,7 @@ import { Chat, Message } from '../types';
 export const KRAKEN_NEWS_CHANNEL: Chat = {
   id: 'kraken_news',
   title: 'Kraken News',
-  lastMessage: 'Welcome to Kraken Messenger - your secure communication platform! 🦑',
+  lastMessage: 'Подписывайтесь на наш Telegram канал! Нажмите, чтобы открыть. 📢',
   timestamp: Date.now() - 3600000,
   isHidden: false,
   isPinned: true,
@@ -172,15 +172,22 @@ export const MOCK_MESSAGES: Record<string, Message[]> = {
     {
       id: 'msg_kn_1',
       chatId: 'kraken_news',
-      text: 'Welcome to Kraken Messenger - your secure communication platform! 🦑',
+      text: 'Добро пожаловать в Kraken Messenger! 🦑',
       timestamp: Date.now() - 7200000,
       isMine: false,
     },
     {
       id: 'msg_kn_2',
       chatId: 'kraken_news',
-      text: 'Your privacy is our priority. All your conversations are protected.',
+      text: 'Подписывайтесь на наш Telegram канал для получения новостей и обновлений!',
       timestamp: Date.now() - 3600000,
+      isMine: false,
+    },
+    {
+      id: 'msg_kn_3',
+      chatId: 'kraken_news',
+      text: '📢 https://t.me/+GsJRkVsUS6U5OTc5',
+      timestamp: Date.now() - 1800000,
       isMine: false,
     },
   ],
