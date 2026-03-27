@@ -17,18 +17,25 @@ export const useChats = () => {
       setLoading(true);
       let storedChats = await getChats();
       
+      console.log('[useChats] Loaded chats from storage:', storedChats.length);
+      
       // Initialize with mock data if empty
       if (storedChats.length === 0) {
+        console.log('[useChats] No chats found, initializing with mock data');
         storedChats = MOCK_CHATS;
         await saveChats(storedChats);
+        console.log('[useChats] Saved', storedChats.length, 'chats to storage');
       }
       
       const hidden = await getHiddenChatIds();
+      console.log('[useChats] Hidden chats:', hidden.length);
+      
       setChats(storedChats);
       setHiddenChatIds(hidden);
     } catch (error) {
-      console.error('Error loading chats:', error);
+      console.error('[useChats] Error loading chats:', error);
       // Fallback to mock data if storage fails
+      console.log('[useChats] Using fallback mock data');
       setChats(MOCK_CHATS);
       setHiddenChatIds([]);
     } finally {

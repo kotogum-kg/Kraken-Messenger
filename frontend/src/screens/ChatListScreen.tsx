@@ -24,6 +24,9 @@ export default function ChatListScreen() {
   const { visibleChats, loading, hideChat, reload } = useChats();
   const [refreshing, setRefreshing] = useState(false);
 
+  // Debug logging
+  console.log('[ChatListScreen] Render - visibleChats:', visibleChats.length, 'loading:', loading);
+
   const handleChatPress = (chat: Chat) => {
     // @ts-ignore - dynamic route
     router.push(`/chat/${chat.id}`);
