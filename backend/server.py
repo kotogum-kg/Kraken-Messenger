@@ -146,6 +146,24 @@ async def get_accounts():
     accounts = TelegramService.get_active_accounts()
     return {"accounts": accounts}
 
+@api_router.post("/telegram/restore-sessions")
+async def restore_sessions():
+    """Restore all existing Telegram sessions"""
+    try:
+        results = await TelegramService.restore_all_sessions()
+        return {"success": True, "sessions": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/telegram/restore-session")
+async def restore_session(phone: str):
+    """Restore a specific Telegram session"""
+    try:
+        result = await TelegramService.restore_session(phone)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/health")
 async def health_check():
     """Health check endpoint"""

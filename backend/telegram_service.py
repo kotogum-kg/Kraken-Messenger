@@ -260,3 +260,67 @@ class TelegramService:
         Get list of active account IDs
         """
         return list(active_clients.keys())
+    
+    @staticmethod
+    async def restore_session(phone: str) -> dict:
+        """
+        Restore an existing session from file
+        Used to reconnect after server restart
+        """
+        session_name = f"sessions/session_{phone}"
+        session_path = f"{session_name}.session"
+        
+        if not os.path.exists(session_path):
+            return {'success': False, 'error': 'Session file not found'}
+        
+        try:
+            # Create client from existing session
+            client = TelegramClient(session_name, API_ID, API_HASH)
+            await client.connect()
+            
+            # Check if already authorized
+            if not await client.is_user_authorized():
+                return {'success': False, 'error': 'Session expired'}
+            
+            # Get user info
+            me = await client.get_me()
+            account_id = f"acc_{me.id}"
+            
+            # Store active client
+            active_clients[account_id] = client
+            
+            return {
+                'success': True,
+                'account_id': account_id,
+                'user': {
+                    'id': me.id,
+                    'first_name': me.first_name,
+                    'last_name': me.last_name,
+                    'username': me.username,
+                    'phone': me.phone
+                }
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    async def restore_all_sessions() -> List[dict]:
+        """
+        Restore all existing sessions from the sessions directory
+        """
+        sessions_dir = "sessions"
+        if not os.path.exists(sessions_dir):
+            return []
+        
+        results = []
+        for filename in os.listdir(sessions_dir):
+            if filename.endswith('.session'):
+                # Extract phone from filename
+                phone = filename.replace('session_', '').replace('.session', '')
+                result = await TelegramService.restore_session(phone)
+                results.append({
+                    'phone': phone,
+                    **result
+                })
+        
+        return results
