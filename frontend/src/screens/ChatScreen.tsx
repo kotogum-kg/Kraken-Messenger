@@ -50,6 +50,7 @@ export default function ChatScreen() {
   const [chatTitle, setChatTitle] = useState('Чат');
   const [chatType, setChatType] = useState<string>('personal');
   const [showMediaMenu, setShowMediaMenu] = useState(false);
+  const [canSendMessages, setCanSendMessages] = useState(true);
   
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -114,19 +115,35 @@ export default function ChatScreen() {
       if (id === 'kraken_news') {
         setChatTitle('Kraken News');
         setChatType('channel');
+        setCanSendMessages(false);
       }
       return;
     }
 
     try {
-      const response = await api.getChats(accountId, 100);
-      const chat = response.chats.find(c => c.id === id);
-      if (chat) {
-        setChatTitle(chat.title);
-        setChatType(chat.type);
+      // Use new chat info API to get permissions
+      const chatInfo = await api.getChatInfo(accountId, id);
+      
+      if (chatInfo.success) {
+        setChatTitle(chatInfo.title || 'Чат');
+        setChatType(chatInfo.type || 'personal');
+        setCanSendMessages(chatInfo.can_send_messages !== false);
+        console.log('[ChatScreen] Chat info:', chatInfo.title, 'canSend:', chatInfo.can_send_messages);
+      } else {
+        // Fallback to old method
+        const response = await api.getChats(accountId, 100);
+        const chat = response.chats.find(c => c.id === id);
+        if (chat) {
+          setChatTitle(chat.title);
+          setChatType(chat.type);
+          // Channels are read-only by default unless we're admin
+          setCanSendMessages(chat.type !== 'channel');
+        }
       }
     } catch (error) {
       console.error('Error loading chat info:', error);
+      // Default to allowing messages for non-channels
+      setCanSendMessages(true);
     }
   }, [accountId, id]);
 
@@ -395,47 +412,55 @@ export default function ChatScreen() {
         ) : (
           // Normal input mode
           <>
-            <TouchableOpacity 
-              style={styles.attachButton}
-              onPress={() => setShowMediaMenu(true)}
-            >
-              <Ionicons name="attach" size={24} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-            
-            <TextInput
-              ref={inputRef}
-              style={styles.input}
-              value={inputText}
-              onChangeText={setInputText}
-              placeholder="Сообщение..."
-              placeholderTextColor={COLORS.textDim}
-              multiline
-              maxLength={4096}
-              editable={!sending && chatType !== 'channel'}
-            />
-            
-            {chatType !== 'channel' && (
-              inputText.trim() ? (
+            {canSendMessages ? (
+              <>
                 <TouchableOpacity 
-                  style={[styles.sendButton, sending && styles.sendButtonDisabled]}
-                  onPress={handleSend}
-                  disabled={sending}
+                  style={styles.attachButton}
+                  onPress={() => setShowMediaMenu(true)}
                 >
-                  {sending ? (
-                    <ActivityIndicator size="small" color={COLORS.background} />
-                  ) : (
-                    <Ionicons name="send" size={20} color={COLORS.background} />
-                  )}
+                  <Ionicons name="attach" size={24} color={COLORS.textSecondary} />
                 </TouchableOpacity>
-              ) : (
-                <TouchableOpacity 
-                  style={styles.micButton}
-                  onPress={handleVoicePress}
-                  disabled={sending}
-                >
-                  <Ionicons name="mic" size={24} color={COLORS.neonBlue} />
-                </TouchableOpacity>
-              )
+                
+                <TextInput
+                  ref={inputRef}
+                  style={styles.input}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  placeholder="Сообщение..."
+                  placeholderTextColor={COLORS.textDim}
+                  multiline
+                  maxLength={4096}
+                  editable={!sending}
+                />
+                
+                {inputText.trim() ? (
+                  <TouchableOpacity 
+                    style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+                    onPress={handleSend}
+                    disabled={sending}
+                  >
+                    {sending ? (
+                      <ActivityIndicator size="small" color={COLORS.background} />
+                    ) : (
+                      <Ionicons name="send" size={20} color={COLORS.background} />
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity 
+                    style={styles.micButton}
+                    onPress={handleVoicePress}
+                    disabled={sending}
+                  >
+                    <Ionicons name="mic" size={24} color={COLORS.neonBlue} />
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              // Read-only channel message
+              <View style={styles.readOnlyMessage}>
+                <Ionicons name="megaphone-outline" size={20} color={COLORS.textDim} />
+                <Text style={styles.readOnlyText}>Только для чтения</Text>
+              </View>
             )}
           </>
         )}
@@ -719,5 +744,18 @@ const styles = StyleSheet.create({
   voiceDuration: {
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
+  },
+  // Read-only channel message
+  readOnlyMessage: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  readOnlyText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textDim,
+    marginLeft: SPACING.sm,
   },
 });

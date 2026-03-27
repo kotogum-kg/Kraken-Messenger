@@ -306,6 +306,51 @@ class ApiService {
   }> {
     return this.request(`/telegram/premium-status?account_id=${accountId}`);
   }
+
+  // Telegram - Get Chat Info (with permissions)
+  async getChatInfo(accountId: string, chatId: string): Promise<{
+    success: boolean;
+    chat_id?: string;
+    title?: string;
+    type?: string;
+    can_send_messages?: boolean;
+    is_admin?: boolean;
+    is_creator?: boolean;
+    error?: string;
+  }> {
+    return this.request(`/telegram/chat-info/${chatId}?account_id=${accountId}`);
+  }
+
+  // Telegram - Get Stories
+  async getStories(accountId: string): Promise<{
+    stories: Array<{
+      peer_id: string;
+      name: string;
+      stories: Array<{
+        id: number;
+        date: string | null;
+        has_media: boolean;
+        views: number;
+      }>;
+      story_count: number;
+    }>;
+  }> {
+    return this.request(`/telegram/stories?account_id=${accountId}`);
+  }
+
+  // Telegram - View Story
+  async viewStory(accountId: string, peerId: string, storyId: number): Promise<{
+    success: boolean;
+    story_id?: number;
+    caption?: string;
+    date?: string;
+    media_type?: 'photo' | 'video';
+    media_data?: string; // base64
+    views?: number;
+    error?: string;
+  }> {
+    return this.request(`/telegram/story/${peerId}/${storyId}?account_id=${accountId}`);
+  }
 }
 
 export const api = new ApiService();

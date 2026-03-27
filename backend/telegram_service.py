@@ -725,3 +725,179 @@ class TelegramService:
             }
         except Exception as e:
             return {'is_premium': False, 'error': str(e)}
+    
+    @staticmethod
+    async def get_chat_info(account_id: str, chat_id: str) -> dict:
+        """
+        Get detailed chat info including permissions
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            entity = await client.get_entity(int(chat_id))
+            me = await client.get_me()
+            
+            chat_type = 'personal'
+            can_send_messages = True
+            is_admin = False
+            is_creator = False
+            title = ''
+            
+            # Check entity type
+            if hasattr(entity, 'broadcast') and entity.broadcast:
+                chat_type = 'channel'
+                title = entity.title
+                # For channels, check if we're admin
+                try:
+                    from telethon.tl.functions.channels import GetParticipantRequest
+                    participant = await client(GetParticipantRequest(entity, me))
+                    participant_type = type(participant.participant).__name__
+                    is_admin = participant_type in ['ChannelParticipantAdmin', 'ChannelParticipantCreator']
+                    is_creator = participant_type == 'ChannelParticipantCreator'
+                    can_send_messages = is_admin or is_creator
+                except:
+                    can_send_messages = False
+            elif hasattr(entity, 'megagroup') and entity.megagroup:
+                chat_type = 'supergroup'
+                title = entity.title
+                can_send_messages = True  # Usually can post in groups
+            elif hasattr(entity, 'title'):
+                chat_type = 'group'
+                title = entity.title
+                can_send_messages = True
+            else:
+                chat_type = 'personal'
+                title = f"{getattr(entity, 'first_name', '')} {getattr(entity, 'last_name', '') or ''}".strip()
+                can_send_messages = True
+            
+            return {
+                'success': True,
+                'chat_id': chat_id,
+                'title': title,
+                'type': chat_type,
+                'can_send_messages': can_send_messages,
+                'is_admin': is_admin,
+                'is_creator': is_creator,
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    async def get_stories(account_id: str) -> List[dict]:
+        """
+        Get stories from contacts and channels
+        """
+        if account_id not in active_clients:
+            return []
+        
+        client = active_clients[account_id]
+        
+        try:
+            from telethon.tl.functions.stories import GetAllStoriesRequest
+            
+            result = await client(GetAllStoriesRequest(
+                next=False,
+                hidden=False,
+                state=''
+            ))
+            
+            stories = []
+            if hasattr(result, 'peer_stories'):
+                for peer_story in result.peer_stories[:20]:  # Limit to 20
+                    peer_id = peer_story.peer
+                    user_id = getattr(peer_id, 'user_id', None) or getattr(peer_id, 'channel_id', None)
+                    
+                    # Get user/channel info
+                    try:
+                        entity = await client.get_entity(user_id)
+                        name = getattr(entity, 'first_name', '') or getattr(entity, 'title', 'Unknown')
+                    except:
+                        name = 'Unknown'
+                    
+                    story_items = []
+                    for story in peer_story.stories[:5]:  # Max 5 stories per user
+                        story_items.append({
+                            'id': story.id,
+                            'date': story.date.isoformat() if story.date else None,
+                            'has_media': story.media is not None,
+                            'views': getattr(story, 'views', 0),
+                        })
+                    
+                    if story_items:
+                        stories.append({
+                            'peer_id': str(user_id),
+                            'name': name,
+                            'stories': story_items,
+                            'story_count': len(story_items),
+                        })
+            
+            return stories
+        except Exception as e:
+            print(f"Error getting stories: {e}")
+            return []
+    
+    @staticmethod
+    async def view_story(account_id: str, peer_id: str, story_id: int) -> dict:
+        """
+        Mark story as viewed and get media
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            import base64
+            import tempfile
+            from telethon.tl.functions.stories import GetStoriesByIDRequest
+            from telethon.tl.types import InputPeerUser, InputPeerChannel
+            
+            # Get the story
+            entity = await client.get_entity(int(peer_id))
+            
+            result = await client(GetStoriesByIDRequest(
+                peer=entity,
+                id=[story_id]
+            ))
+            
+            if not result.stories:
+                return {'success': False, 'error': 'Story not found'}
+            
+            story = result.stories[0]
+            
+            # Download media if exists
+            media_data = None
+            media_type = None
+            
+            if story.media:
+                with tempfile.NamedTemporaryFile(delete=False) as f:
+                    temp_path = f.name
+                
+                try:
+                    await client.download_media(story.media, temp_path)
+                    with open(temp_path, 'rb') as f:
+                        media_data = base64.b64encode(f.read()).decode('utf-8')
+                    
+                    # Determine type
+                    if hasattr(story.media, 'photo'):
+                        media_type = 'photo'
+                    elif hasattr(story.media, 'document'):
+                        media_type = 'video'
+                finally:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+            
+            return {
+                'success': True,
+                'story_id': story_id,
+                'caption': getattr(story, 'caption', ''),
+                'date': story.date.isoformat() if story.date else None,
+                'media_type': media_type,
+                'media_data': media_data,
+                'views': getattr(story, 'views', 0),
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}

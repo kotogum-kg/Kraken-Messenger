@@ -311,6 +311,33 @@ async def get_premium_status(account_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/telegram/chat-info/{chat_id}")
+async def get_chat_info(account_id: str, chat_id: str):
+    """Get detailed chat info including permissions"""
+    try:
+        result = await TelegramService.get_chat_info(account_id, chat_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/telegram/stories")
+async def get_stories(account_id: str):
+    """Get stories from contacts and channels"""
+    try:
+        stories = await TelegramService.get_stories(account_id)
+        return {"stories": stories}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/telegram/story/{peer_id}/{story_id}")
+async def view_story(account_id: str, peer_id: str, story_id: int):
+    """View a story and get its media"""
+    try:
+        result = await TelegramService.view_story(account_id, peer_id, story_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Include the router in the main app
 app.include_router(api_router)
