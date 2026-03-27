@@ -14,12 +14,14 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import { useTelegram } from '../context/TelegramContext';
 import { api } from '../services/api';
+import { useVoiceRecording, formatDuration } from '../hooks/useVoiceRecording';
 
 interface TelegramMessage {
   id: number;
@@ -27,6 +29,12 @@ interface TelegramMessage {
   date: string;
   is_mine: boolean;
   from_id: number | null;
+  type?: string;
+  media?: {
+    duration?: number;
+    size?: number;
+    has_ttl?: boolean;
+  };
 }
 
 export default function ChatScreen() {
@@ -43,6 +51,40 @@ export default function ChatScreen() {
   
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
+  
+  // Voice recording
+  const {
+    isRecording,
+    duration: recordingDuration,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    getBase64,
+  } = useVoiceRecording();
+  
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  
+  // Pulse animation for recording
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isRecording, pulseAnim]);
 
   // Load messages
   const loadMessages = useCallback(async () => {
@@ -128,6 +170,51 @@ export default function ChatScreen() {
     } finally {
       setSending(false);
     }
+  };
+
+  // Handle voice recording
+  const handleVoicePress = async () => {
+    if (isRecording) {
+      // Stop recording and send
+      const result = await stopRecording();
+      if (result && result.uri && accountId && id) {
+        setSending(true);
+        try {
+          const base64 = await getBase64(result.uri);
+          if (base64) {
+            const sendResult = await api.sendVoice(accountId, id, base64, result.duration);
+            if (sendResult.success) {
+              // Add voice message locally
+              const newMessage: TelegramMessage = {
+                id: sendResult.message_id || Date.now(),
+                text: '',
+                date: sendResult.date || new Date().toISOString(),
+                is_mine: true,
+                from_id: null,
+                type: 'voice',
+                media: { duration: result.duration },
+              };
+              setMessages(prev => [...prev, newMessage]);
+              flatListRef.current?.scrollToEnd({ animated: true });
+            } else {
+              Alert.alert('Ошибка', sendResult.error || 'Не удалось отправить голосовое');
+            }
+          }
+        } catch (error) {
+          console.error('Error sending voice:', error);
+          Alert.alert('Ошибка', 'Не удалось отправить голосовое сообщение');
+        } finally {
+          setSending(false);
+        }
+      }
+    } else {
+      // Start recording
+      await startRecording();
+    }
+  };
+
+  const handleCancelVoice = () => {
+    cancelRecording();
   };
 
   // Refresh messages
@@ -286,34 +373,66 @@ export default function ChatScreen() {
 
       {/* Input */}
       <View style={styles.inputContainer}>
-        <TouchableOpacity style={styles.attachButton}>
-          <Ionicons name="attach" size={24} color={COLORS.textSecondary} />
-        </TouchableOpacity>
-        
-        <TextInput
-          ref={inputRef}
-          style={styles.input}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Сообщение..."
-          placeholderTextColor={COLORS.textDim}
-          multiline
-          maxLength={4096}
-          editable={!sending && chatType !== 'channel'}
-        />
-        
-        {chatType !== 'channel' && (
-          <TouchableOpacity 
-            style={[styles.sendButton, (!inputText.trim() || sending) && styles.sendButtonDisabled]}
-            onPress={handleSend}
-            disabled={!inputText.trim() || sending}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color={COLORS.background} />
-            ) : (
-              <Ionicons name="send" size={20} color={inputText.trim() ? COLORS.background : COLORS.textDim} />
+        {isRecording ? (
+          // Recording mode
+          <View style={styles.recordingContainer}>
+            <TouchableOpacity onPress={handleCancelVoice} style={styles.cancelButton}>
+              <Ionicons name="close" size={24} color={COLORS.error} />
+            </TouchableOpacity>
+            
+            <View style={styles.recordingInfo}>
+              <Animated.View style={[styles.recordingDot, { transform: [{ scale: pulseAnim }] }]} />
+              <Text style={styles.recordingTime}>{formatDuration(recordingDuration)}</Text>
+              <Text style={styles.recordingHint}>Отпустите для отправки</Text>
+            </View>
+            
+            <TouchableOpacity onPress={handleVoicePress} style={styles.sendVoiceButton}>
+              <Ionicons name="send" size={20} color={COLORS.background} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          // Normal input mode
+          <>
+            <TouchableOpacity style={styles.attachButton}>
+              <Ionicons name="attach" size={24} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+            
+            <TextInput
+              ref={inputRef}
+              style={styles.input}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Сообщение..."
+              placeholderTextColor={COLORS.textDim}
+              multiline
+              maxLength={4096}
+              editable={!sending && chatType !== 'channel'}
+            />
+            
+            {chatType !== 'channel' && (
+              inputText.trim() ? (
+                <TouchableOpacity 
+                  style={[styles.sendButton, sending && styles.sendButtonDisabled]}
+                  onPress={handleSend}
+                  disabled={sending}
+                >
+                  {sending ? (
+                    <ActivityIndicator size="small" color={COLORS.background} />
+                  ) : (
+                    <Ionicons name="send" size={20} color={COLORS.background} />
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  style={styles.micButton}
+                  onPress={handleVoicePress}
+                  disabled={sending}
+                >
+                  <Ionicons name="mic" size={24} color={COLORS.neonBlue} />
+                </TouchableOpacity>
+              )
             )}
-          </TouchableOpacity>
+          </>
         )}
       </View>
     </KeyboardAvoidingView>
@@ -516,5 +635,73 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.md,
     fontWeight: '600',
     marginLeft: SPACING.sm,
+  },
+  // Voice recording styles
+  micButton: {
+    width: 44,
+    height: 44,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.backgroundCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cancelButton: {
+    width: 44,
+    height: 44,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.error,
+    marginRight: SPACING.sm,
+  },
+  recordingTime: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginRight: SPACING.sm,
+  },
+  recordingHint: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  sendVoiceButton: {
+    width: 44,
+    height: 44,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.neonBlue,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Voice message display
+  voiceMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+  },
+  voiceIcon: {
+    marginRight: SPACING.sm,
+  },
+  voiceDuration: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
   },
 });

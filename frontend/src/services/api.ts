@@ -163,6 +163,78 @@ class ApiService {
       method: 'POST',
     });
   }
+
+  // Telegram - Send Voice Message
+  async sendVoice(accountId: string, chatId: string, voiceData: string, duration: number): Promise<{
+    success: boolean;
+    message_id?: number;
+    date?: string;
+    error?: string;
+  }> {
+    return this.request('/telegram/send-voice', {
+      method: 'POST',
+      body: JSON.stringify({
+        account_id: accountId,
+        chat_id: chatId,
+        voice_data: voiceData, // base64
+        duration,
+      }),
+    });
+  }
+
+  // Telegram - Send Media (photo/video/file)
+  async sendMedia(accountId: string, chatId: string, mediaData: string, filename: string, caption: string = '', ttlSeconds?: number): Promise<{
+    success: boolean;
+    message_id?: number;
+    date?: string;
+    is_self_destructing?: boolean;
+    error?: string;
+  }> {
+    return this.request('/telegram/send-media', {
+      method: 'POST',
+      body: JSON.stringify({
+        account_id: accountId,
+        chat_id: chatId,
+        media_data: mediaData, // base64
+        filename,
+        caption,
+        ttl_seconds: ttlSeconds,
+      }),
+    });
+  }
+
+  // Telegram - Get Messages Extended (with media info)
+  async getMessagesExtended(accountId: string, chatId: string, limit: number = 50): Promise<{
+    messages: Array<{
+      id: number;
+      text: string;
+      date: string;
+      is_mine: boolean;
+      from_id: number | null;
+      type: 'text' | 'voice' | 'video_note' | 'photo' | 'video' | 'document' | 'sticker';
+      media?: {
+        duration?: number;
+        size?: number;
+        has_ttl?: boolean;
+        ttl_seconds?: number;
+        filename?: string;
+        emoji?: string;
+      };
+    }>;
+  }> {
+    return this.request(`/telegram/messages-extended/${chatId}?account_id=${accountId}&limit=${limit}`);
+  }
+
+  // Telegram - Download Media
+  async downloadMedia(accountId: string, chatId: string, messageId: number): Promise<{
+    success: boolean;
+    data?: string; // base64
+    size?: number;
+    filename?: string;
+    error?: string;
+  }> {
+    return this.request(`/telegram/download-media/${chatId}/${messageId}?account_id=${accountId}`);
+  }
 }
 
 export const api = new ApiService();

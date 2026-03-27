@@ -51,6 +51,20 @@ class SendMessageRequest(BaseModel):
     chat_id: str
     text: str
 
+class SendVoiceRequest(BaseModel):
+    account_id: str
+    chat_id: str
+    voice_data: str  # base64 encoded
+    duration: int = 0
+
+class SendMediaRequest(BaseModel):
+    account_id: str
+    chat_id: str
+    media_data: str  # base64 encoded
+    filename: str
+    caption: str = ''
+    ttl_seconds: Optional[int] = None  # For self-destructing media
+
 
 # ============= Original Routes =============
 
@@ -171,6 +185,61 @@ async def health_check():
         "status": "healthy",
         "telegram_api_configured": bool(os.getenv('TELEGRAM_API_ID')) and bool(os.getenv('TELEGRAM_API_HASH'))
     }
+
+
+# ============= Voice & Media Endpoints =============
+
+@api_router.post("/telegram/send-voice")
+async def send_voice(request: SendVoiceRequest):
+    """Send voice message to chat"""
+    import base64
+    try:
+        voice_bytes = base64.b64decode(request.voice_data)
+        result = await TelegramService.send_voice(
+            request.account_id,
+            request.chat_id,
+            voice_bytes,
+            request.duration
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/telegram/send-media")
+async def send_media(request: SendMediaRequest):
+    """Send media (photo/video/file) to chat"""
+    import base64
+    try:
+        media_bytes = base64.b64decode(request.media_data)
+        result = await TelegramService.send_media(
+            request.account_id,
+            request.chat_id,
+            media_bytes,
+            request.filename,
+            request.caption,
+            request.ttl_seconds
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/telegram/messages-extended/{chat_id}")
+async def get_messages_extended(account_id: str, chat_id: str, limit: int = 50):
+    """Get messages with extended media info"""
+    try:
+        messages = await TelegramService.get_messages_extended(account_id, chat_id, limit)
+        return {"messages": messages}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/telegram/download-media/{chat_id}/{message_id}")
+async def download_media(account_id: str, chat_id: str, message_id: int):
+    """Download media from message (returns base64)"""
+    try:
+        result = await TelegramService.download_media(account_id, chat_id, message_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Include the router in the main app

@@ -342,3 +342,237 @@ class TelegramService:
                 })
         
         return results
+    
+    @staticmethod
+    async def send_voice(account_id: str, chat_id: str, voice_data: bytes, duration: int = 0, waveform: bytes = None) -> dict:
+        """
+        Send voice message to chat
+        voice_data: OGG/OPUS audio bytes
+        duration: Duration in seconds
+        waveform: Voice waveform data (optional)
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            import tempfile
+            
+            # Save voice data to temp file
+            with tempfile.NamedTemporaryFile(suffix='.ogg', delete=False) as f:
+                f.write(voice_data)
+                temp_path = f.name
+            
+            try:
+                # Send as voice message
+                attributes = [
+                    types.DocumentAttributeAudio(
+                        duration=duration,
+                        voice=True,
+                        waveform=waveform
+                    )
+                ]
+                
+                message = await client.send_file(
+                    int(chat_id),
+                    temp_path,
+                    voice_note=True,
+                    attributes=attributes
+                )
+                
+                return {
+                    'success': True,
+                    'message_id': message.id,
+                    'date': message.date.isoformat()
+                }
+            finally:
+                # Clean up temp file
+                os.unlink(temp_path)
+                
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    async def send_media(account_id: str, chat_id: str, media_data: bytes, filename: str, 
+                         caption: str = '', ttl_seconds: int = None) -> dict:
+        """
+        Send media (photo/video/file) to chat
+        ttl_seconds: Time to live for self-destructing media (None for regular)
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            import tempfile
+            
+            # Determine file extension
+            ext = os.path.splitext(filename)[1].lower() if filename else '.bin'
+            
+            # Save media to temp file
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+                f.write(media_data)
+                temp_path = f.name
+            
+            try:
+                # Build send options
+                send_kwargs = {
+                    'caption': caption,
+                    'force_document': ext not in ['.jpg', '.jpeg', '.png', '.gif', '.mp4', '.webm']
+                }
+                
+                # Add TTL for self-destructing media
+                if ttl_seconds and ttl_seconds > 0:
+                    send_kwargs['ttl'] = ttl_seconds
+                
+                message = await client.send_file(
+                    int(chat_id),
+                    temp_path,
+                    **send_kwargs
+                )
+                
+                return {
+                    'success': True,
+                    'message_id': message.id,
+                    'date': message.date.isoformat(),
+                    'is_self_destructing': ttl_seconds is not None and ttl_seconds > 0
+                }
+            finally:
+                # Clean up temp file
+                os.unlink(temp_path)
+                
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
+    @staticmethod
+    async def get_messages_extended(account_id: str, chat_id: str, limit: int = 50) -> List[dict]:
+        """
+        Get messages with extended media info
+        """
+        if account_id not in active_clients:
+            return []
+        
+        client = active_clients[account_id]
+        
+        # Get messages with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                messages = await client.get_messages(int(chat_id), limit=limit)
+                break
+            except Exception as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    await asyncio.sleep(0.1 * (2 ** attempt))
+                    continue
+                raise
+        
+        result = []
+        me = await client.get_me()
+        
+        for msg in messages:
+            if not msg:
+                continue
+            
+            is_mine = msg.from_id and msg.from_id.user_id == me.id if hasattr(msg.from_id, 'user_id') else False
+            
+            # Determine message type and media info
+            msg_type = 'text'
+            media_info = None
+            
+            if msg.voice:
+                msg_type = 'voice'
+                media_info = {
+                    'duration': msg.voice.duration if hasattr(msg.voice, 'duration') else 0,
+                    'size': msg.voice.size if hasattr(msg.voice, 'size') else 0,
+                }
+            elif msg.video_note:
+                msg_type = 'video_note'
+                media_info = {
+                    'duration': msg.video_note.duration if hasattr(msg.video_note, 'duration') else 0,
+                    'size': msg.video_note.size if hasattr(msg.video_note, 'size') else 0,
+                }
+            elif msg.photo:
+                msg_type = 'photo'
+                media_info = {
+                    'has_ttl': msg.media.ttl_seconds is not None if hasattr(msg.media, 'ttl_seconds') else False,
+                    'ttl_seconds': msg.media.ttl_seconds if hasattr(msg.media, 'ttl_seconds') else None,
+                }
+            elif msg.video:
+                msg_type = 'video'
+                media_info = {
+                    'duration': msg.video.duration if hasattr(msg.video, 'duration') else 0,
+                    'has_ttl': msg.media.ttl_seconds is not None if hasattr(msg.media, 'ttl_seconds') else False,
+                }
+            elif msg.document:
+                msg_type = 'document'
+                media_info = {
+                    'filename': msg.file.name if msg.file else 'file',
+                    'size': msg.document.size if hasattr(msg.document, 'size') else 0,
+                }
+            elif msg.sticker:
+                msg_type = 'sticker'
+                media_info = {
+                    'emoji': msg.sticker.alt if hasattr(msg.sticker, 'alt') else '',
+                }
+            
+            result.append({
+                'id': msg.id,
+                'text': msg.message or '',
+                'date': msg.date.isoformat(),
+                'is_mine': is_mine,
+                'from_id': msg.from_id.user_id if hasattr(msg.from_id, 'user_id') else None,
+                'type': msg_type,
+                'media': media_info,
+            })
+        
+        return result
+    
+    @staticmethod
+    async def download_media(account_id: str, chat_id: str, message_id: int) -> dict:
+        """
+        Download media from message
+        Returns base64 encoded data
+        """
+        if account_id not in active_clients:
+            return {'success': False, 'error': 'Account not found'}
+        
+        client = active_clients[account_id]
+        
+        try:
+            import base64
+            import tempfile
+            
+            # Get the message
+            messages = await client.get_messages(int(chat_id), ids=[message_id])
+            if not messages or not messages[0]:
+                return {'success': False, 'error': 'Message not found'}
+            
+            msg = messages[0]
+            
+            if not msg.media:
+                return {'success': False, 'error': 'No media in message'}
+            
+            # Download to temp file
+            with tempfile.NamedTemporaryFile(delete=False) as f:
+                temp_path = f.name
+            
+            try:
+                await client.download_media(msg, temp_path)
+                
+                with open(temp_path, 'rb') as f:
+                    data = f.read()
+                
+                return {
+                    'success': True,
+                    'data': base64.b64encode(data).decode('utf-8'),
+                    'size': len(data),
+                    'filename': msg.file.name if msg.file else 'media',
+                }
+            finally:
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
