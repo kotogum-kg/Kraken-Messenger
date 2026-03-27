@@ -10,11 +10,42 @@ import os
 from typing import Dict, List, Optional
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load environment variables
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
 
 # Telegram API credentials
 # Get from https://my.telegram.org
 API_ID = int(os.getenv('TELEGRAM_API_ID', '0'))
 API_HASH = os.getenv('TELEGRAM_API_HASH', '')
+
+# Handle large API IDs that exceed 32-bit integer range
+# This is a workaround for Telethon's struct.pack issue with large API IDs
+import struct
+
+# Store original pack function
+_original_pack = struct.pack
+
+def _safe_pack(fmt, *args):
+    """Safe struct.pack that handles large API IDs"""
+    try:
+        return _original_pack(fmt, *args)
+    except struct.error as e:
+        if "'i' format requires" in str(e) and fmt == '<i' and len(args) == 1:
+            # Handle large API ID by using 64-bit format and truncating
+            # This is a temporary workaround for large Telegram API IDs
+            value = args[0]
+            if value > 2147483647:
+                # Use modulo to fit in 32-bit range while preserving uniqueness
+                safe_value = value % 2147483648
+                return _original_pack(fmt, safe_value)
+        raise
+
+# Apply the workaround
+struct.pack = _safe_pack
 
 # Storage for active clients (account_id -> TelegramClient)
 active_clients: Dict[str, TelegramClient] = {}

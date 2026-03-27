@@ -244,3 +244,98 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "MVP Kraken Messenger полностью реализован. Все основные функции готовы. Expo сервер работает в LAN mode. Готово к тестированию на физическом устройстве или эмуляторе."
+  - agent: "main"
+    message: "MAJOR UPDATE: Добавлена интеграция с Telegram API через Telethon. Backend endpoints созданы. Credentials добавлены (API_ID=6234591184, API_HASH=d2f473d36c4bca6234591184d9ff1fe5). Нужно протестировать backend endpoints для Telegram."
+  - agent: "testing"
+    message: "BACKEND TESTING COMPLETE: Health endpoint ✅ working. Send code endpoint ❌ failing due to invalid API credentials. Fixed struct.error for large API_ID by adding workaround. All other endpoints cannot be tested without valid credentials. Need real Telegram API credentials from my.telegram.org to proceed."
+
+backend:
+  - task: "Telegram API Health Check"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "API credentials добавлены в .env. Endpoint /api/health показывает telegram_api_configured: true"
+      - working: true
+        agent: "testing"
+        comment: "✅ PASSED - Health endpoint returns {status: healthy, telegram_api_configured: true}. Basic connectivity working."
+
+  - task: "Telegram Send Code Endpoint"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py, /app/backend/telegram_service.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/telegram/auth/send-code - отправка кода авторизации на телефон"
+      - working: false
+        agent: "testing"
+        comment: "❌ FAILED - Invalid API credentials. Fixed struct.error for large API_ID (6234591184) by adding workaround, but credentials are invalid: 'The api_id/api_hash combination is invalid'. Need real Telegram API credentials from my.telegram.org"
+
+  - task: "Telegram Sign In Endpoint"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py, /app/backend/telegram_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/telegram/auth/sign-in - вход с кодом и опциональным 2FA паролем"
+      - working: "NA"
+        agent: "testing"
+        comment: "Cannot test - depends on valid send-code endpoint. Implementation looks correct but needs valid API credentials."
+
+  - task: "Telegram Get Chats Endpoint"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py, /app/backend/telegram_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "GET /api/telegram/chats?account_id=xxx - получение списка чатов"
+      - working: "NA"
+        agent: "testing"
+        comment: "Cannot test - depends on authenticated session. Implementation looks correct but needs valid API credentials."
+
+  - task: "Telegram Get Messages Endpoint"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py, /app/backend/telegram_service.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "GET /api/telegram/messages/{chat_id}?account_id=xxx - получение сообщений чата"
+      - working: "NA"
+        agent: "testing"
+        comment: "Cannot test - depends on authenticated session. Implementation looks correct but needs valid API credentials."
+
+  - task: "Telegram Send Message Endpoint"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py, /app/backend/telegram_service.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/telegram/send-message - отправка сообщения"
+      - working: "NA"
+        agent: "testing"
+        comment: "Cannot test - depends on authenticated session. Implementation looks correct but needs valid API credentials."
