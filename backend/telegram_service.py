@@ -145,8 +145,17 @@ class TelegramService:
         
         client = active_clients[account_id]
         
-        # Get dialogs (chats)
-        dialogs = await client.get_dialogs(limit=limit)
+        # Get dialogs (chats) with retry logic for database locks
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                dialogs = await client.get_dialogs(limit=limit)
+                break
+            except Exception as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    await asyncio.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                    continue
+                raise
         
         chats = []
         for dialog in dialogs:
@@ -193,8 +202,17 @@ class TelegramService:
         
         client = active_clients[account_id]
         
-        # Get messages
-        messages = await client.get_messages(int(chat_id), limit=limit)
+        # Get messages with retry logic for database locks
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                messages = await client.get_messages(int(chat_id), limit=limit)
+                break
+            except Exception as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    await asyncio.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                    continue
+                raise
         
         result = []
         for msg in messages:

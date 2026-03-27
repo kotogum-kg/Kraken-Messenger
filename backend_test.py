@@ -1,238 +1,337 @@
 #!/usr/bin/env python3
 """
-Backend Testing Script for Kraken Messenger Telegram API Integration
-Tests the Telegram API endpoints for functionality and integration
+Backend Testing Script for Kraken Messenger Telegram Integration
+Tests all Telegram API endpoints with real data
 """
 
 import requests
 import json
 import sys
-import time
 from typing import Dict, Any
 
-# Backend URL from frontend .env
+# Backend URL from environment
 BACKEND_URL = "https://secure-chat-mvp-1.preview.emergentagent.com/api"
 
-# Test phone number from review request
+# Test data from review request
+TEST_ACCOUNT_ID = "acc_8645807364"
 TEST_PHONE = "+996709195105"
+TEST_CHAT_ID = "5811505184"  # Rainbow Dash chat
 
 class TelegramAPITester:
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+        self.results = []
+        
+    def log_result(self, test_name: str, success: bool, details: str, response_data: Any = None):
+        """Log test result"""
+        status = "✅ PASS" if success else "❌ FAIL"
+        print(f"{status} - {test_name}")
+        print(f"   Details: {details}")
+        if response_data:
+            print(f"   Response: {json.dumps(response_data, indent=2)}")
+        print()
+        
+        self.results.append({
+            'test': test_name,
+            'success': success,
+            'details': details,
+            'response': response_data
         })
-        self.results = {}
-        
-    def log(self, message: str, level: str = "INFO"):
-        """Log test messages"""
-        print(f"[{level}] {message}")
-        
-    def test_health_endpoint(self) -> bool:
-        """Test GET /api/health endpoint"""
-        self.log("Testing Health Check endpoint...")
-        
+    
+    def test_health_endpoint(self):
+        """Test GET /api/health"""
         try:
             response = self.session.get(f"{BACKEND_URL}/health", timeout=10)
             
-            self.log(f"Health endpoint status: {response.status_code}")
-            self.log(f"Health endpoint response: {response.text}")
-            
             if response.status_code == 200:
                 data = response.json()
+                expected_keys = ['status', 'telegram_api_configured']
                 
-                # Check required fields
-                if "status" in data and "telegram_api_configured" in data:
-                    if data["status"] == "healthy" and data["telegram_api_configured"] is True:
-                        self.log("✅ Health check passed - Telegram API configured", "SUCCESS")
-                        self.results["health_check"] = {"status": "passed", "data": data}
-                        return True
+                if all(key in data for key in expected_keys):
+                    if data['status'] == 'healthy' and data['telegram_api_configured'] is True:
+                        self.log_result(
+                            "Health Check", 
+                            True, 
+                            "Health endpoint working correctly",
+                            data
+                        )
                     else:
-                        self.log(f"❌ Health check failed - Status: {data.get('status')}, Telegram configured: {data.get('telegram_api_configured')}", "ERROR")
-                        self.results["health_check"] = {"status": "failed", "error": "Invalid health status or Telegram not configured", "data": data}
-                        return False
+                        self.log_result(
+                            "Health Check", 
+                            False, 
+                            f"Unexpected values: status={data.get('status')}, telegram_api_configured={data.get('telegram_api_configured')}",
+                            data
+                        )
                 else:
-                    self.log("❌ Health check failed - Missing required fields", "ERROR")
-                    self.results["health_check"] = {"status": "failed", "error": "Missing required fields in response", "data": data}
-                    return False
+                    self.log_result(
+                        "Health Check", 
+                        False, 
+                        f"Missing expected keys. Got: {list(data.keys())}",
+                        data
+                    )
             else:
-                self.log(f"❌ Health check failed - HTTP {response.status_code}", "ERROR")
-                self.results["health_check"] = {"status": "failed", "error": f"HTTP {response.status_code}", "response": response.text}
-                return False
-                
-        except requests.exceptions.RequestException as e:
-            self.log(f"❌ Health check failed - Connection error: {str(e)}", "ERROR")
-            self.results["health_check"] = {"status": "failed", "error": f"Connection error: {str(e)}"}
-            return False
-        except json.JSONDecodeError as e:
-            self.log(f"❌ Health check failed - Invalid JSON response: {str(e)}", "ERROR")
-            self.results["health_check"] = {"status": "failed", "error": f"Invalid JSON: {str(e)}", "response": response.text}
-            return False
-            
-    def test_send_code_endpoint(self) -> bool:
-        """Test POST /api/telegram/auth/send-code endpoint"""
-        self.log("Testing Send Code endpoint...")
-        
-        try:
-            payload = {"phone": TEST_PHONE}
-            response = self.session.post(
-                f"{BACKEND_URL}/telegram/auth/send-code", 
-                json=payload,
-                timeout=30  # Longer timeout for Telegram API calls
-            )
-            
-            self.log(f"Send code endpoint status: {response.status_code}")
-            self.log(f"Send code endpoint response: {response.text}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Check required fields
-                required_fields = ["success", "phone", "phone_code_hash"]
-                if all(field in data for field in required_fields):
-                    if data["success"] is True and data["phone"] == TEST_PHONE and data["phone_code_hash"]:
-                        self.log("✅ Send code passed - Code sent successfully", "SUCCESS")
-                        self.results["send_code"] = {"status": "passed", "data": data}
-                        return True
-                    else:
-                        self.log(f"❌ Send code failed - Invalid response data: {data}", "ERROR")
-                        self.results["send_code"] = {"status": "failed", "error": "Invalid response data", "data": data}
-                        return False
-                else:
-                    self.log(f"❌ Send code failed - Missing required fields. Got: {list(data.keys())}", "ERROR")
-                    self.results["send_code"] = {"status": "failed", "error": "Missing required fields", "data": data}
-                    return False
-            else:
-                self.log(f"❌ Send code failed - HTTP {response.status_code}", "ERROR")
-                try:
-                    error_data = response.json()
-                    self.results["send_code"] = {"status": "failed", "error": f"HTTP {response.status_code}", "data": error_data}
-                except:
-                    self.results["send_code"] = {"status": "failed", "error": f"HTTP {response.status_code}", "response": response.text}
-                return False
-                
-        except requests.exceptions.Timeout:
-            self.log("❌ Send code failed - Request timeout (30s)", "ERROR")
-            self.results["send_code"] = {"status": "failed", "error": "Request timeout"}
-            return False
-        except requests.exceptions.RequestException as e:
-            self.log(f"❌ Send code failed - Connection error: {str(e)}", "ERROR")
-            self.results["send_code"] = {"status": "failed", "error": f"Connection error: {str(e)}"}
-            return False
-        except json.JSONDecodeError as e:
-            self.log(f"❌ Send code failed - Invalid JSON response: {str(e)}", "ERROR")
-            self.results["send_code"] = {"status": "failed", "error": f"Invalid JSON: {str(e)}", "response": response.text}
-            return False
-            
-    def test_basic_endpoints(self) -> bool:
-        """Test basic API endpoints for connectivity"""
-        self.log("Testing basic API connectivity...")
-        
-        try:
-            # Test root endpoint
-            response = self.session.get(f"{BACKEND_URL}/", timeout=10)
-            self.log(f"Root endpoint status: {response.status_code}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                self.log(f"Root endpoint response: {data}")
-                self.results["basic_connectivity"] = {"status": "passed", "data": data}
-                return True
-            else:
-                self.log(f"❌ Basic connectivity failed - HTTP {response.status_code}", "ERROR")
-                self.results["basic_connectivity"] = {"status": "failed", "error": f"HTTP {response.status_code}"}
-                return False
+                self.log_result(
+                    "Health Check", 
+                    False, 
+                    f"HTTP {response.status_code}: {response.text}"
+                )
                 
         except Exception as e:
-            self.log(f"❌ Basic connectivity failed - {str(e)}", "ERROR")
-            self.results["basic_connectivity"] = {"status": "failed", "error": str(e)}
-            return False
-            
-    def test_telegram_accounts_endpoint(self) -> bool:
-        """Test GET /api/telegram/accounts endpoint"""
-        self.log("Testing Telegram Accounts endpoint...")
-        
+            self.log_result("Health Check", False, f"Request failed: {str(e)}")
+    
+    def test_get_accounts(self):
+        """Test GET /api/telegram/accounts"""
         try:
             response = self.session.get(f"{BACKEND_URL}/telegram/accounts", timeout=10)
             
-            self.log(f"Accounts endpoint status: {response.status_code}")
-            self.log(f"Accounts endpoint response: {response.text}")
+            if response.status_code == 200:
+                data = response.json()
+                
+                if 'accounts' in data:
+                    accounts = data['accounts']
+                    if TEST_ACCOUNT_ID in accounts:
+                        self.log_result(
+                            "Get Accounts", 
+                            True, 
+                            f"Found expected account {TEST_ACCOUNT_ID} in {len(accounts)} total accounts",
+                            data
+                        )
+                    else:
+                        self.log_result(
+                            "Get Accounts", 
+                            False, 
+                            f"Expected account {TEST_ACCOUNT_ID} not found. Available: {accounts}",
+                            data
+                        )
+                else:
+                    self.log_result(
+                        "Get Accounts", 
+                        False, 
+                        "Response missing 'accounts' key",
+                        data
+                    )
+            else:
+                self.log_result(
+                    "Get Accounts", 
+                    False, 
+                    f"HTTP {response.status_code}: {response.text}"
+                )
+                
+        except Exception as e:
+            self.log_result("Get Accounts", False, f"Request failed: {str(e)}")
+    
+    def test_get_chats(self):
+        """Test GET /api/telegram/chats"""
+        try:
+            params = {
+                'account_id': TEST_ACCOUNT_ID,
+                'limit': 10
+            }
+            response = self.session.get(f"{BACKEND_URL}/telegram/chats", params=params, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
-                if "accounts" in data and isinstance(data["accounts"], list):
-                    self.log("✅ Accounts endpoint passed", "SUCCESS")
-                    self.results["accounts"] = {"status": "passed", "data": data}
-                    return True
+                
+                if 'chats' in data:
+                    chats = data['chats']
+                    if isinstance(chats, list) and len(chats) > 0:
+                        # Check if chats have expected structure
+                        first_chat = chats[0]
+                        expected_keys = ['id', 'title', 'type', 'unread_count', 'last_message']
+                        
+                        if all(key in first_chat for key in expected_keys):
+                            self.log_result(
+                                "Get Chats", 
+                                True, 
+                                f"Retrieved {len(chats)} chats with correct structure",
+                                {'chat_count': len(chats), 'sample_chat': first_chat}
+                            )
+                        else:
+                            self.log_result(
+                                "Get Chats", 
+                                False, 
+                                f"Chat structure missing keys. Expected: {expected_keys}, Got: {list(first_chat.keys())}",
+                                data
+                            )
+                    else:
+                        self.log_result(
+                            "Get Chats", 
+                            False, 
+                            "No chats returned or invalid format",
+                            data
+                        )
                 else:
-                    self.log("❌ Accounts endpoint failed - Invalid response format", "ERROR")
-                    self.results["accounts"] = {"status": "failed", "error": "Invalid response format", "data": data}
-                    return False
+                    self.log_result(
+                        "Get Chats", 
+                        False, 
+                        "Response missing 'chats' key",
+                        data
+                    )
             else:
-                self.log(f"❌ Accounts endpoint failed - HTTP {response.status_code}", "ERROR")
-                self.results["accounts"] = {"status": "failed", "error": f"HTTP {response.status_code}", "response": response.text}
-                return False
+                self.log_result(
+                    "Get Chats", 
+                    False, 
+                    f"HTTP {response.status_code}: {response.text}"
+                )
                 
         except Exception as e:
-            self.log(f"❌ Accounts endpoint failed - {str(e)}", "ERROR")
-            self.results["accounts"] = {"status": "failed", "error": str(e)}
-            return False
+            self.log_result("Get Chats", False, f"Request failed: {str(e)}")
+    
+    def test_get_messages(self):
+        """Test GET /api/telegram/messages/{chat_id}"""
+        try:
+            params = {
+                'account_id': TEST_ACCOUNT_ID,
+                'limit': 5
+            }
+            response = self.session.get(
+                f"{BACKEND_URL}/telegram/messages/{TEST_CHAT_ID}", 
+                params=params, 
+                timeout=15
+            )
             
+            if response.status_code == 200:
+                data = response.json()
+                
+                if 'messages' in data:
+                    messages = data['messages']
+                    if isinstance(messages, list) and len(messages) > 0:
+                        # Check if messages have expected structure
+                        first_message = messages[0]
+                        expected_keys = ['id', 'text', 'date', 'is_mine']
+                        
+                        if all(key in first_message for key in expected_keys):
+                            self.log_result(
+                                "Get Messages", 
+                                True, 
+                                f"Retrieved {len(messages)} messages from chat {TEST_CHAT_ID} with correct structure",
+                                {'message_count': len(messages), 'sample_message': first_message}
+                            )
+                        else:
+                            self.log_result(
+                                "Get Messages", 
+                                False, 
+                                f"Message structure missing keys. Expected: {expected_keys}, Got: {list(first_message.keys())}",
+                                data
+                            )
+                    else:
+                        self.log_result(
+                            "Get Messages", 
+                            False, 
+                            "No messages returned or invalid format",
+                            data
+                        )
+                else:
+                    self.log_result(
+                        "Get Messages", 
+                        False, 
+                        "Response missing 'messages' key",
+                        data
+                    )
+            else:
+                self.log_result(
+                    "Get Messages", 
+                    False, 
+                    f"HTTP {response.status_code}: {response.text}"
+                )
+                
+        except Exception as e:
+            self.log_result("Get Messages", False, f"Request failed: {str(e)}")
+    
+    def test_send_message(self):
+        """Test POST /api/telegram/send-message"""
+        try:
+            payload = {
+                "account_id": TEST_ACCOUNT_ID,
+                "chat_id": TEST_CHAT_ID,
+                "text": "Test from Kraken API"
+            }
+            
+            response = self.session.post(
+                f"{BACKEND_URL}/telegram/send-message",
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if 'success' in data and data['success'] is True:
+                    expected_keys = ['message_id', 'date']
+                    if all(key in data for key in expected_keys):
+                        self.log_result(
+                            "Send Message", 
+                            True, 
+                            f"Message sent successfully to chat {TEST_CHAT_ID}",
+                            data
+                        )
+                    else:
+                        self.log_result(
+                            "Send Message", 
+                            False, 
+                            f"Success but missing expected keys. Expected: {expected_keys}, Got: {list(data.keys())}",
+                            data
+                        )
+                else:
+                    self.log_result(
+                        "Send Message", 
+                        False, 
+                        f"Send failed: {data.get('error', 'Unknown error')}",
+                        data
+                    )
+            else:
+                self.log_result(
+                    "Send Message", 
+                    False, 
+                    f"HTTP {response.status_code}: {response.text}"
+                )
+                
+        except Exception as e:
+            self.log_result("Send Message", False, f"Request failed: {str(e)}")
+    
     def run_all_tests(self):
-        """Run all backend tests"""
-        self.log("=" * 60)
-        self.log("STARTING KRAKEN MESSENGER TELEGRAM API BACKEND TESTS")
-        self.log("=" * 60)
+        """Run all tests in sequence"""
+        print("=" * 60)
+        print("KRAKEN MESSENGER TELEGRAM API TESTING")
+        print("=" * 60)
+        print(f"Backend URL: {BACKEND_URL}")
+        print(f"Test Account: {TEST_ACCOUNT_ID}")
+        print(f"Test Phone: {TEST_PHONE}")
+        print(f"Test Chat: {TEST_CHAT_ID}")
+        print("=" * 60)
+        print()
         
-        # Test basic connectivity first
-        basic_ok = self.test_basic_endpoints()
-        
-        # Test health endpoint
-        health_ok = self.test_health_endpoint()
-        
-        # Test accounts endpoint
-        accounts_ok = self.test_telegram_accounts_endpoint()
-        
-        # Test send code endpoint (main focus)
-        send_code_ok = self.test_send_code_endpoint()
+        # Run tests in order
+        self.test_health_endpoint()
+        self.test_get_accounts()
+        self.test_get_chats()
+        self.test_get_messages()
+        self.test_send_message()
         
         # Summary
-        self.log("=" * 60)
-        self.log("TEST RESULTS SUMMARY")
-        self.log("=" * 60)
+        print("=" * 60)
+        print("TEST SUMMARY")
+        print("=" * 60)
         
-        total_tests = 4
-        passed_tests = sum([basic_ok, health_ok, accounts_ok, send_code_ok])
+        passed = sum(1 for r in self.results if r['success'])
+        total = len(self.results)
         
-        self.log(f"Basic Connectivity: {'✅ PASSED' if basic_ok else '❌ FAILED'}")
-        self.log(f"Health Check: {'✅ PASSED' if health_ok else '❌ FAILED'}")
-        self.log(f"Accounts Endpoint: {'✅ PASSED' if accounts_ok else '❌ FAILED'}")
-        self.log(f"Send Code Endpoint: {'✅ PASSED' if send_code_ok else '❌ FAILED'}")
+        for result in self.results:
+            status = "✅" if result['success'] else "❌"
+            print(f"{status} {result['test']}")
         
-        self.log(f"\nOverall: {passed_tests}/{total_tests} tests passed")
+        print()
+        print(f"TOTAL: {passed}/{total} tests passed")
         
-        if passed_tests == total_tests:
-            self.log("🎉 ALL TESTS PASSED!", "SUCCESS")
+        if passed == total:
+            print("🎉 ALL TESTS PASSED!")
             return True
         else:
-            self.log("⚠️  SOME TESTS FAILED", "ERROR")
+            print("⚠️  SOME TESTS FAILED")
             return False
-            
-    def get_detailed_results(self) -> Dict[str, Any]:
-        """Get detailed test results"""
-        return self.results
 
 if __name__ == "__main__":
     tester = TelegramAPITester()
     success = tester.run_all_tests()
-    
-    # Print detailed results
-    print("\n" + "=" * 60)
-    print("DETAILED RESULTS")
-    print("=" * 60)
-    results = tester.get_detailed_results()
-    print(json.dumps(results, indent=2))
-    
-    # Exit with appropriate code
     sys.exit(0 if success else 1)

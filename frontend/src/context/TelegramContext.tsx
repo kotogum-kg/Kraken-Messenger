@@ -46,6 +46,30 @@ export function TelegramProvider({ children }: { children: ReactNode }) {
       try {
         const restoreResult = await api.restoreSessions();
         console.log('[TelegramContext] Restore sessions result:', restoreResult);
+        
+        // If backend restored a session and we don't have local data, use it
+        if (restoreResult.success && restoreResult.sessions.length > 0) {
+          const restoredSession = restoreResult.sessions.find(s => s.success);
+          if (restoredSession && restoredSession.account_id && restoredSession.user) {
+            // Check local storage
+            const localSession = await AsyncStorage.getItem(STORAGE_KEY);
+            if (!localSession) {
+              // Auto-login with restored session
+              console.log('[TelegramContext] Auto-login with restored backend session');
+              await AsyncStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify({ 
+                  accountId: restoredSession.account_id, 
+                  user: restoredSession.user 
+                })
+              );
+              setAccountId(restoredSession.account_id);
+              setUser(restoredSession.user);
+              setIsAuthenticated(true);
+              return true;
+            }
+          }
+        }
       } catch (e) {
         console.log('[TelegramContext] Could not restore sessions:', e);
       }
