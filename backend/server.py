@@ -12,6 +12,7 @@ from datetime import datetime
 
 # Import Telegram service
 from telegram_service import TelegramService
+from link_preview import LinkPreviewService
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -350,6 +351,20 @@ async def view_story(account_id: str, peer_id: str, story_id: int):
     try:
         result = await TelegramService.view_story(account_id, peer_id, story_id)
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============= Link Preview Endpoint =============
+
+@api_router.get("/link-preview")
+async def get_link_preview(url: str):
+    """Get OpenGraph preview for a URL"""
+    try:
+        preview = await LinkPreviewService.get_preview(url)
+        if preview:
+            return preview
+        return {"error": "Could not fetch preview", "url": url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -20,9 +20,10 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
-import { ChannelPost, MediaItem, getChannelPosts, formatViews, formatPostTime } from '../data/mockChannelPosts';
+import { ChannelPost, MediaItem, getChannelPosts, formatViews, formatPostTime, extractFirstUrl } from '../data/mockChannelPosts';
 import { PostSkeleton } from '../components/SkeletonLoader';
 import { MediaViewer } from '../components/MediaViewer';
+import { LinkPreview } from '../components/LinkPreview';
 
 export default function ChannelFeedScreen() {
   const router = useRouter();
@@ -200,6 +201,15 @@ export default function ChannelFeedScreen() {
       {/* Content */}
       {item.title && <Text style={styles.postTitle}>{item.title}</Text>}
       <Text style={styles.postText}>{item.text}</Text>
+
+      {/* Link Preview - only first URL */}
+      {(() => {
+        const firstUrl = item.links?.[0] || extractFirstUrl(item.text);
+        if (firstUrl && item.media.length === 0) {
+          return <LinkPreview url={firstUrl} />;
+        }
+        return null;
+      })()}
 
       {/* Media */}
       {renderMediaGrid(item.media)}

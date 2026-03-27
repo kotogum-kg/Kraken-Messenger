@@ -1,5 +1,5 @@
 /**
- * Mock Channel Posts with Media Support
+ * Mock Channel Posts with Media Support and Link Previews
  * For Kraken News and other channels
  */
 
@@ -25,6 +25,7 @@ export interface ChannelPost {
   hasReplies: boolean;
   replyCount: number;
   isPinned?: boolean;
+  links?: string[]; // URLs in the post for previews
 }
 
 // Sample images (using picsum for demo)
@@ -54,6 +55,19 @@ export const KRAKEN_NEWS_POSTS: ChannelPost[] = [
     isPinned: true,
   },
   {
+    id: 'post_link_1',
+    channelId: 'kraken_news',
+    title: '📰 Обзор Telegram в 2025 году',
+    text: 'Интересная статья о развитии Telegram и его конкурентах:\n\nhttps://www.theverge.com/2024/3/5/24090213/telegram-one-billion-users-2024',
+    timestamp: Date.now() - 1000 * 60 * 45, // 45 min ago
+    views: 8234,
+    likes: 456,
+    media: [],
+    hasReplies: true,
+    replyCount: 89,
+    links: ['https://www.theverge.com/2024/3/5/24090213/telegram-one-billion-users-2024'],
+  },
+  {
     id: 'post_2',
     channelId: 'kraken_news',
     text: '🔒 **Безопасность на первом месте**\n\nВсе ваши данные зашифрованы и хранятся только на вашем устройстве. Мы не собираем личную информацию.',
@@ -63,6 +77,19 @@ export const KRAKEN_NEWS_POSTS: ChannelPost[] = [
     media: [],
     hasReplies: true,
     replyCount: 67,
+  },
+  {
+    id: 'post_link_2',
+    channelId: 'kraken_news',
+    title: '🛠️ Полезные инструменты для разработчиков',
+    text: 'Рекомендуем отличную статью о React Native:\n\nhttps://reactnative.dev/blog/2024/04/22/release-0.74\n\nТакже читайте документацию Expo: https://docs.expo.dev/',
+    timestamp: Date.now() - 1000 * 60 * 60 * 3, // 3 hours ago
+    views: 5678,
+    likes: 234,
+    media: [],
+    hasReplies: true,
+    replyCount: 45,
+    links: ['https://reactnative.dev/blog/2024/04/22/release-0.74'],
   },
   {
     id: 'post_3',
@@ -81,6 +108,19 @@ export const KRAKEN_NEWS_POSTS: ChannelPost[] = [
     replyCount: 234,
   },
   {
+    id: 'post_link_3',
+    channelId: 'kraken_news',
+    title: '📱 GitHub репозиторий',
+    text: 'Наш проект теперь открыт!\n\nСмотрите исходный код: https://github.com/nicepkg/gpt-runner\n\nСтавьте звёзды ⭐',
+    timestamp: Date.now() - 1000 * 60 * 60 * 8, // 8 hours ago
+    views: 9876,
+    likes: 567,
+    media: [],
+    hasReplies: true,
+    replyCount: 123,
+    links: ['https://github.com/nicepkg/gpt-runner'],
+  },
+  {
     id: 'post_4',
     channelId: 'kraken_news',
     text: '❓ **FAQ: Частые вопросы**\n\n**Q:** Как скрыть чат?\n**A:** Долгое нажатие на чат → "Скрыть"\n\n**Q:** Как включить PIN?\n**A:** Настройки → Безопасность → PIN-код',
@@ -90,6 +130,19 @@ export const KRAKEN_NEWS_POSTS: ChannelPost[] = [
     media: [],
     hasReplies: true,
     replyCount: 89,
+  },
+  {
+    id: 'post_link_4',
+    channelId: 'kraken_news',
+    title: '🌐 Новости технологий',
+    text: 'Интересная статья от Habr:\n\nhttps://habr.com/ru/companies/yandex/articles/\n\nРекомендуем к прочтению!',
+    timestamp: Date.now() - 1000 * 60 * 60 * 36, // 1.5 days ago
+    views: 7654,
+    likes: 345,
+    media: [],
+    hasReplies: true,
+    replyCount: 78,
+    links: ['https://habr.com/ru/companies/yandex/articles/'],
   },
   {
     id: 'post_5',
@@ -207,4 +260,11 @@ export function formatPostTime(timestamp: number): string {
   
   const date = new Date(timestamp);
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
+// Extract first URL from text
+export function extractFirstUrl(text: string): string | null {
+  const urlPattern = /https?:\/\/[^\s<>"]+/g;
+  const matches = text.match(urlPattern);
+  return matches ? matches[0] : null;
 }

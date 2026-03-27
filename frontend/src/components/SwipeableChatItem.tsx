@@ -1,8 +1,9 @@
 /**
  * Swipeable Chat Item Component
- * With swipe actions: delete, hide, pin, mark as read
+ * With swipe actions: delete, hide, pin, mark as read, mute
+ * Displays avatar images
  */
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,10 +12,13 @@ import {
   Animated,
   PanResponder,
   Dimensions,
+  Alert,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import { Chat, ChatType } from '../types';
+import { MuteService, MUTE_DURATIONS } from '../services/muteService';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = 80;
@@ -26,6 +30,30 @@ interface SwipeableChatItemProps {
   onHide?: () => void;
   onPin?: () => void;
   onMarkRead?: () => void;
+  onMuteChange?: (muted: boolean) => void;
+}
+
+// Generate avatar color based on chat title
+function getAvatarColor(title: string): string {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', 
+    '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
+    '#BB8FCE', '#85C1E9', '#F8B500', '#00CED1',
+  ];
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+// Get initials from title
+function getInitials(title: string): string {
+  const words = title.trim().split(' ').filter(w => w.length > 0);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return title.substring(0, 2).toUpperCase();
 }
 
 export function SwipeableChatItem({
@@ -35,10 +63,16 @@ export function SwipeableChatItem({
   onHide,
   onPin,
   onMarkRead,
+  onMuteChange,
 }: SwipeableChatItemProps) {
   const translateX = useRef(new Animated.Value(0)).current;
   const isSwipedLeft = useRef(false);
-  const isSwipedRight = useRef(false);
+  const [isMuted, setIsMuted] = useState(chat.isMuted || false);
+
+  useEffect(() => {
+    // Check mute status on mount
+    MuteService.isMuted(chat.id).then(setIsMuted);
+  }, [chat.id]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -47,7 +81,7 @@ export function SwipeableChatItem({
       },
       onPanResponderMove: (_, gestureState) => {
         if (gestureState.dx < 0) {
-          translateX.setValue(Math.max(gestureState.dx, -160));
+          translateX.setValue(Math.max(gestureState.dx, -200));
         } else {
           translateX.setValue(Math.min(gestureState.dx, 80));
         }
@@ -56,7 +90,7 @@ export function SwipeableChatItem({
         if (gestureState.dx < -SWIPE_THRESHOLD) {
           // Swipe left - show actions
           Animated.spring(translateX, {
-            toValue: -160,
+            toValue: -200,
             useNativeDriver: true,
           }).start();
           isSwipedLeft.current = true;
@@ -85,6 +119,54 @@ export function SwipeableChatItem({
       useNativeDriver: true,
     }).start();
     isSwipedLeft.current = false;
+  };
+
+  const handleMutePress = () => {
+    Alert.alert(
+      isMuted ? 'Включить уведомления' : 'Отключить уведомления',
+      isMuted ? 'Включить уведомления для этого чата?' : 'На какое время отключить уведомления?',
+      isMuted ? [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Включить',
+          onPress: async () => {
+            await MuteService.unmuteChat(chat.id);
+            setIsMuted(false);
+            onMuteChange?.(false);
+            closeSwipe();
+          },
+        },
+      ] : [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: '1 час',
+          onPress: async () => {
+            await MuteService.muteChat(chat.id, MUTE_DURATIONS['1_HOUR']);
+            setIsMuted(true);
+            onMuteChange?.(true);
+            closeSwipe();
+          },
+        },
+        {
+          text: '8 часов',
+          onPress: async () => {
+            await MuteService.muteChat(chat.id, MUTE_DURATIONS['8_HOURS']);
+            setIsMuted(true);
+            onMuteChange?.(true);
+            closeSwipe();
+          },
+        },
+        {
+          text: 'Навсегда',
+          onPress: async () => {
+            await MuteService.muteChat(chat.id, MUTE_DURATIONS['FOREVER']);
+            setIsMuted(true);
+            onMuteChange?.(true);
+            closeSwipe();
+          },
+        },
+      ]
+    );
   };
 
   const getChatIcon = (type: ChatType) => {
@@ -116,10 +198,23 @@ export function SwipeableChatItem({
     return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
   };
 
+  const avatarColor = getAvatarColor(chat.title);
+  const initials = getInitials(chat.title);
+
   return (
     <View style={styles.container}>
       {/* Right actions */}
       <View style={styles.actionsRight}>
+        <TouchableOpacity
+          style={[styles.action, styles.actionMute]}
+          onPress={handleMutePress}
+        >
+          <Ionicons 
+            name={isMuted ? 'volume-high' : 'volume-mute'} 
+            size={22} 
+            color="#fff" 
+          />
+        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.action, styles.actionPin]}
           onPress={() => { onPin?.(); closeSwipe(); }}
@@ -148,9 +243,22 @@ export function SwipeableChatItem({
         <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={styles.touchable}>
           {/* Avatar */}
           <View style={styles.avatarContainer}>
-            <View style={[styles.avatar, chat.type === 'channel' && styles.avatarChannel]}>
-              <Ionicons name={getChatIcon(chat.type)} size={24} color={COLORS.neonBlue} />
-            </View>
+            {chat.avatar ? (
+              <ExpoImage
+                source={{ uri: chat.avatar }}
+                style={styles.avatarImage}
+                contentFit="cover"
+                transition={200}
+              />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
+                {chat.type === 'channel' || chat.type === 'group' || chat.type === 'supergroup' ? (
+                  <Ionicons name={getChatIcon(chat.type)} size={24} color="#fff" />
+                ) : (
+                  <Text style={styles.avatarText}>{initials}</Text>
+                )}
+              </View>
+            )}
             {chat.isOnline && <View style={styles.onlineIndicator} />}
           </View>
 
@@ -161,7 +269,7 @@ export function SwipeableChatItem({
                 {chat.isPinned && (
                   <Ionicons name="pin" size={14} color={COLORS.neonBlue} style={styles.pinIcon} />
                 )}
-                {chat.isMuted && (
+                {isMuted && (
                   <Ionicons name="volume-mute" size={14} color={COLORS.textDim} style={styles.muteIcon} />
                 )}
                 <Text style={styles.title} numberOfLines={1}>{chat.title}</Text>
@@ -171,7 +279,7 @@ export function SwipeableChatItem({
             <View style={styles.messageRow}>
               <Text style={styles.lastMessage} numberOfLines={1}>{chat.lastMessage}</Text>
               {chat.unreadCount > 0 && (
-                <View style={[styles.badge, chat.isMuted && styles.badgeMuted]}>
+                <View style={[styles.badge, isMuted && styles.badgeMuted]}>
                   <Text style={styles.badgeText}>
                     {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
                   </Text>
@@ -199,10 +307,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   action: {
-    width: 53,
+    width: 50,
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  actionMute: {
+    backgroundColor: '#7B68EE',
   },
   actionPin: {
     backgroundColor: COLORS.neonBlue,
@@ -229,12 +340,18 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: COLORS.backgroundCard,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarChannel: {
-    backgroundColor: 'rgba(0, 242, 255, 0.15)',
+  avatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  avatarText: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: '#fff',
   },
   onlineIndicator: {
     position: 'absolute',

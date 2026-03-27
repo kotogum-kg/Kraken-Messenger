@@ -351,6 +351,20 @@ class ApiService {
   }> {
     return this.request(`/telegram/story/${peerId}/${storyId}?account_id=${accountId}`);
   }
+
+  // Link Preview - Get OpenGraph metadata
+  async getLinkPreview(url: string): Promise<{
+    url: string;
+    title: string | null;
+    description: string | null;
+    image: string | null;
+    siteName: string | null;
+    favicon: string | null;
+    type?: string;
+    error?: string;
+  }> {
+    return this.request(`/link-preview?url=${encodeURIComponent(url)}`);
+  }
 }
 
 export const api = new ApiService();
