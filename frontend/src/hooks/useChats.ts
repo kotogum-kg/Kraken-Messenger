@@ -28,6 +28,9 @@ export const useChats = () => {
       setHiddenChatIds(hidden);
     } catch (error) {
       console.error('Error loading chats:', error);
+      // Fallback to mock data if storage fails
+      setChats(MOCK_CHATS);
+      setHiddenChatIds([]);
     } finally {
       setLoading(false);
     }
