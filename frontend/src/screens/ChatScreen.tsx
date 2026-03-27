@@ -5,7 +5,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  FlatList,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
@@ -15,7 +14,9 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Linking,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
@@ -52,7 +53,7 @@ export default function ChatScreen() {
   const [showMediaMenu, setShowMediaMenu] = useState(false);
   const [canSendMessages, setCanSendMessages] = useState(true);
   
-  const flatListRef = useRef<FlatList>(null);
+  const flashListRef = useRef<FlashList<TelegramMessage>>(null);
   const inputRef = useRef<TextInput>(null);
   
   // Voice recording
@@ -176,7 +177,7 @@ export default function ChatScreen() {
         
         // Scroll to bottom
         setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
+          flashListRef.current?.scrollToEnd({ animated: true });
         }, 100);
       } else {
         Alert.alert('Ошибка', result.error || 'Не удалось отправить сообщение');
@@ -214,7 +215,7 @@ export default function ChatScreen() {
                 media: { duration: result.duration },
               };
               setMessages(prev => [...prev, newMessage]);
-              flatListRef.current?.scrollToEnd({ animated: true });
+              flashListRef.current?.scrollToEnd({ animated: true });
             } else {
               Alert.alert('Ошибка', sendResult.error || 'Не удалось отправить голосовое');
             }
@@ -290,9 +291,17 @@ export default function ChatScreen() {
           <TouchableOpacity 
             style={styles.openTelegramButton}
             onPress={() => {
-              import('react-native').then(({ Linking }) => {
-                Linking.openURL('https://t.me/+GsJRkVsUS6U5OTc5');
-              });
+              Alert.alert(
+                'Перейти в Telegram',
+                'Вы переходите во внешний канал Telegram.',
+                [
+                  { text: 'Отмена', style: 'cancel' },
+                  {
+                    text: 'Перейти',
+                    onPress: () => Linking.openURL('https://t.me/+GsJRkVsUS6U5OTc5'),
+                  },
+                ]
+              );
             }}
           >
             <Ionicons name="open-outline" size={20} color={COLORS.background} />
@@ -370,24 +379,27 @@ export default function ChatScreen() {
           <Text style={styles.loadingText}>Загрузка сообщений...</Text>
         </View>
       ) : (
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.messagesContainer}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="chatbubble-outline" size={48} color={COLORS.textDim} />
-              <Text style={styles.emptyText}>Нет сообщений</Text>
-            </View>
-          }
-          onContentSizeChange={() => {
-            if (messages.length > 0) {
-              flatListRef.current?.scrollToEnd({ animated: false });
+        <View style={{ flex: 1 }}>
+          <FlashList
+            ref={flashListRef}
+            data={messages}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={renderMessage}
+            estimatedItemSize={80}
+            contentContainerStyle={styles.messagesContainer}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="chatbubble-outline" size={48} color={COLORS.textDim} />
+                <Text style={styles.emptyText}>Нет сообщений</Text>
+              </View>
             }
-          }}
-        />
+            onContentSizeChange={() => {
+              if (messages.length > 0) {
+                flashListRef.current?.scrollToEnd({ animated: false });
+              }
+            }}
+          />
+        </View>
       )}
 
       {/* Input */}
