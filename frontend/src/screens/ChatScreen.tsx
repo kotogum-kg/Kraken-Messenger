@@ -22,6 +22,7 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
 import { useTelegram } from '../context/TelegramContext';
 import { api } from '../services/api';
 import { useVoiceRecording, formatDuration } from '../hooks/useVoiceRecording';
+import { MediaAttachMenu } from '../components/MediaAttachMenu';
 
 interface TelegramMessage {
   id: number;
@@ -48,6 +49,7 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [chatTitle, setChatTitle] = useState('Чат');
   const [chatType, setChatType] = useState<string>('personal');
+  const [showMediaMenu, setShowMediaMenu] = useState(false);
   
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -393,7 +395,10 @@ export default function ChatScreen() {
         ) : (
           // Normal input mode
           <>
-            <TouchableOpacity style={styles.attachButton}>
+            <TouchableOpacity 
+              style={styles.attachButton}
+              onPress={() => setShowMediaMenu(true)}
+            >
               <Ionicons name="attach" size={24} color={COLORS.textSecondary} />
             </TouchableOpacity>
             
@@ -435,6 +440,17 @@ export default function ChatScreen() {
           </>
         )}
       </View>
+
+      {/* Media Attach Menu */}
+      {accountId && id && (
+        <MediaAttachMenu
+          visible={showMediaMenu}
+          onClose={() => setShowMediaMenu(false)}
+          accountId={accountId}
+          chatId={id}
+          onMediaSent={loadMessages}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }

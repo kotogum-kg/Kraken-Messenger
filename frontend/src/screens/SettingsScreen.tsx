@@ -11,12 +11,15 @@ import {
   Alert,
   StatusBar,
   Switch,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { isPINSet, clearSecurityData } from '../utils/security';
 import { clearAllData } from '../utils/storage';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../constants/theme';
+import { useTelegram } from '../context/TelegramContext';
+import { ACCENT_COLORS } from '../context/ThemeContext';
 
 interface SettingItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -66,8 +69,11 @@ const SettingItem: React.FC<SettingItemProps> = ({
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { isAuthenticated, user, logout } = useTelegram();
   const [pinSet, setPinSet] = useState(false);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const [showThemeModal, setShowThemeModal] = useState(false);
+  const [selectedAccent, setSelectedAccent] = useState(COLORS.neonBlue);
 
   useEffect(() => {
     checkPINStatus();
@@ -146,6 +152,75 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Выйти из Telegram',
+      'Вы уверены? Для входа потребуется новый код.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Выйти',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            router.replace('/');
+          },
+        },
+      ]
+    );
+  };
+
+  // Theme modal component
+  const ThemeModal = () => (
+    <Modal
+      visible={showThemeModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowThemeModal(false)}
+    >
+      <TouchableOpacity 
+        style={styles.modalOverlay} 
+        activeOpacity={1}
+        onPress={() => setShowThemeModal(false)}
+      >
+        <View style={styles.themeModalContent}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Выберите цвет</Text>
+          
+          <View style={styles.colorsGrid}>
+            {ACCENT_COLORS.map((item) => (
+              <TouchableOpacity
+                key={item.color}
+                style={[
+                  styles.colorOption,
+                  { backgroundColor: item.color },
+                  selectedAccent === item.color && styles.colorOptionSelected,
+                ]}
+                onPress={() => {
+                  setSelectedAccent(item.color);
+                  // Here you would update the theme context
+                  Alert.alert('Цвет изменён', `Выбран: ${item.name}`);
+                  setShowThemeModal(false);
+                }}
+              >
+                {selectedAccent === item.color && (
+                  <Ionicons name="checkmark" size={24} color="#fff" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.closeModalButton}
+            onPress={() => setShowThemeModal(false)}
+          >
+            <Text style={styles.closeModalText}>Закрыть</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
@@ -160,6 +235,36 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView style={styles.content}>
+        {/* Account Section */}
+        {isAuthenticated && user && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Аккаунт Telegram</Text>
+            
+            <View style={styles.accountCard}>
+              <View style={styles.accountIcon}>
+                <Ionicons name="person" size={32} color={COLORS.neonBlue} />
+              </View>
+              <View style={styles.accountInfo}>
+                <Text style={styles.accountName}>
+                  {user.first_name} {user.last_name || ''}
+                </Text>
+                <Text style={styles.accountPhone}>+{user.phone}</Text>
+                {user.username && (
+                  <Text style={styles.accountUsername}>@{user.username}</Text>
+                )}
+              </View>
+            </View>
+            
+            <SettingItem
+              icon="log-out"
+              title="Выйти из Telegram"
+              subtitle="Потребуется новый код"
+              onPress={handleLogout}
+              danger
+            />
+          </View>
+        )}
+
         {/* Privacy Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Конфиденциальность</Text>
@@ -226,9 +331,9 @@ export default function SettingsScreen() {
           
           <SettingItem
             icon="color-palette"
-            title="Тема"
-            subtitle="Тёмная (дефолт)"
-            onPress={() => Alert.alert('Тема', 'Другие темы будут доступны позже')}
+            title="Цвет акцента"
+            subtitle="Выберите ваш цвет"
+            onPress={() => setShowThemeModal(true)}
           />
         </View>
 
@@ -270,6 +375,9 @@ export default function SettingsScreen() {
           <Text style={styles.footerSubtext}>Защищённые чаты</Text>
         </View>
       </ScrollView>
+      
+      {/* Theme Modal */}
+      <ThemeModal />
     </View>
   );
 }
@@ -369,5 +477,98 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     color: COLORS.textSecondary,
     marginTop: SPACING.xs,
+  },
+  // Account styles
+  accountCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.md,
+    backgroundColor: COLORS.backgroundCard,
+    marginHorizontal: SPACING.md,
+    marginVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.neonBlue + '40',
+  },
+  accountIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.neonBlue + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  accountInfo: {
+    flex: 1,
+  },
+  accountName: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  accountPhone: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  accountUsername: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.neonBlue,
+    marginTop: SPACING.xs,
+  },
+  // Theme Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  themeModalContent: {
+    backgroundColor: COLORS.backgroundLight,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: SPACING.lg,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  colorsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: SPACING.lg,
+  },
+  colorOption: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    margin: SPACING.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  colorOptionSelected: {
+    borderWidth: 3,
+    borderColor: COLORS.textPrimary,
+  },
+  closeModalButton: {
+    alignItems: 'center',
+    padding: SPACING.md,
+  },
+  closeModalText: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
   },
 });
