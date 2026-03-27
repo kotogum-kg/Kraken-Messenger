@@ -1,111 +1,72 @@
 /**
  * Voice Recording Hook
- * Uses expo-av for recording audio on mobile
+ * Uses expo-audio for recording audio on mobile
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Platform, Alert } from 'react-native';
-import { Audio } from 'expo-av';
+import {
+  useAudioRecorder,
+  useAudioRecorderState,
+  AudioModule,
+  setAudioModeAsync,
+  RecordingPresets,
+} from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
 
-interface VoiceRecordingState {
-  isRecording: boolean;
-  duration: number;
+interface VoiceRecordingResult {
   uri: string | null;
+  duration: number;
 }
 
 export function useVoiceRecording() {
-  const [state, setState] = useState<VoiceRecordingState>({
-    isRecording: false,
-    duration: 0,
-    uri: null,
-  });
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder, 500); // Update every 500ms
   
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [permissionGranted, setPermissionGranted] = useState(false);
   const startTimeRef = useRef<number>(0);
 
-  // Request permissions
-  const requestPermissions = useCallback(async () => {
-    try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          'Требуется разрешение',
-          'Для записи голосовых сообщений нужен доступ к микрофону'
-        );
-        return false;
+  // Request permissions on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { granted } = await AudioModule.requestRecordingPermissionsAsync();
+        setPermissionGranted(granted);
+        
+        if (granted) {
+          await setAudioModeAsync({
+            allowsRecording: true,
+            playsInSilentMode: true,
+          });
+        }
+      } catch (error) {
+        console.error('Error requesting audio permissions:', error);
       }
-      
-      // Configure audio mode for recording
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      });
-      
-      return true;
-    } catch (error) {
-      console.error('Error requesting audio permissions:', error);
-      return false;
-    }
+    })();
   }, []);
 
   // Start recording
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (): Promise<boolean> => {
     try {
-      const hasPermission = await requestPermissions();
-      if (!hasPermission) return false;
-
-      // Stop any existing recording
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
+      if (!permissionGranted) {
+        const { granted } = await AudioModule.requestRecordingPermissionsAsync();
+        if (!granted) {
+          Alert.alert(
+            'Требуется разрешение',
+            'Для записи голосовых сообщений нужен доступ к микрофону'
+          );
+          return false;
+        }
+        setPermissionGranted(true);
       }
 
-      // Create recording with settings optimized for voice
-      const recording = new Audio.Recording();
-      
-      await recording.prepareToRecordAsync({
-        android: {
-          extension: '.m4a',
-          outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-          audioEncoder: Audio.AndroidAudioEncoder.AAC,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        ios: {
-          extension: '.m4a',
-          audioQuality: Audio.IOSAudioQuality.MEDIUM,
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-        web: {
-          mimeType: 'audio/webm',
-          bitsPerSecond: 128000,
-        },
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
 
-      await recording.startAsync();
-      recordingRef.current = recording;
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       startTimeRef.current = Date.now();
-
-      // Start duration timer
-      durationIntervalRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        setState(prev => ({ ...prev, duration: elapsed }));
-      }, 100);
-
-      setState({
-        isRecording: true,
-        duration: 0,
-        uri: null,
-      });
 
       return true;
     } catch (error) {
@@ -113,38 +74,18 @@ export function useVoiceRecording() {
       Alert.alert('Ошибка', 'Не удалось начать запись');
       return false;
     }
-  }, [requestPermissions]);
+  }, [permissionGranted, recorder]);
 
   // Stop recording
-  const stopRecording = useCallback(async () => {
+  const stopRecording = useCallback(async (): Promise<VoiceRecordingResult | null> => {
     try {
-      if (!recordingRef.current) {
-        return null;
-      }
-
-      // Stop timer
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-        durationIntervalRef.current = null;
-      }
-
-      // Stop recording
-      await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
+      await recorder.stop();
+      const uri = recorder.uri;
       const duration = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
-      recordingRef.current = null;
-
-      setState({
-        isRecording: false,
-        duration,
-        uri,
-      });
-
-      // Reset audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
       });
 
       return { uri, duration };
@@ -152,34 +93,22 @@ export function useVoiceRecording() {
       console.error('Error stopping recording:', error);
       return null;
     }
-  }, []);
+  }, [recorder]);
 
   // Cancel recording
   const cancelRecording = useCallback(async () => {
     try {
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
-        recordingRef.current = null;
+      if (recorderState.isRecording) {
+        await recorder.stop();
       }
-
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-        durationIntervalRef.current = null;
-      }
-
-      setState({
-        isRecording: false,
-        duration: 0,
-        uri: null,
-      });
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
+      
+      await setAudioModeAsync({
+        allowsRecording: false,
       });
     } catch (error) {
       console.error('Error canceling recording:', error);
     }
-  }, []);
+  }, [recorder, recorderState.isRecording]);
 
   // Get base64 from uri
   const getBase64 = useCallback(async (uri: string): Promise<string | null> => {
@@ -210,20 +139,13 @@ export function useVoiceRecording() {
     }
   }, []);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (recordingRef.current) {
-        recordingRef.current.stopAndUnloadAsync();
-      }
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-      }
-    };
-  }, []);
+  // Computed duration in seconds
+  const duration = Math.floor((recorderState.durationMillis || 0) / 1000);
 
   return {
-    ...state,
+    isRecording: recorderState.isRecording,
+    duration,
+    uri: recorder.uri,
     startRecording,
     stopRecording,
     cancelRecording,

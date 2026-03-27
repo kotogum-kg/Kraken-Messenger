@@ -2,7 +2,7 @@
  * Media Viewer Component
  * Full-screen viewer for images and videos with pinch-to-zoom
  */
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { Video, ResizeMode } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
 import { MediaItem } from '../data/mockChannelPosts';
@@ -27,22 +27,39 @@ interface MediaViewerProps {
   onClose: () => void;
 }
 
+// Video player component with expo-video
+function VideoPlayerView({ uri, onLoad }: { uri: string; onLoad: () => void }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+    p.play();
+  });
+
+  useEffect(() => {
+    onLoad();
+  }, []);
+
+  return (
+    <VideoView
+      style={styles.video}
+      player={player}
+      allowsFullscreen
+      allowsPictureInPicture
+      nativeControls
+    />
+  );
+}
+
 export function MediaViewer({ visible, media, onClose }: MediaViewerProps) {
   const [loading, setLoading] = useState(true);
-  const [videoStatus, setVideoStatus] = useState<any>({});
-  const videoRef = useRef<Video>(null);
+
+  // Reset loading state when media changes
+  useEffect(() => {
+    if (media) {
+      setLoading(true);
+    }
+  }, [media]);
 
   if (!media) return null;
-
-  const handleVideoPlayPause = async () => {
-    if (!videoRef.current) return;
-    
-    if (videoStatus.isPlaying) {
-      await videoRef.current.pauseAsync();
-    } else {
-      await videoRef.current.playAsync();
-    }
-  };
 
   return (
     <Modal
@@ -80,16 +97,9 @@ export function MediaViewer({ visible, media, onClose }: MediaViewerProps) {
         {/* Video */}
         {media.type === 'video' && (
           <View style={styles.videoContainer}>
-            <Video
-              ref={videoRef}
-              source={{ uri: media.uri }}
-              style={styles.video}
-              resizeMode={ResizeMode.CONTAIN}
-              useNativeControls
-              shouldPlay
-              onLoadStart={() => setLoading(true)}
-              onLoad={() => setLoading(false)}
-              onPlaybackStatusUpdate={setVideoStatus}
+            <VideoPlayerView 
+              uri={media.uri} 
+              onLoad={() => setLoading(false)} 
             />
           </View>
         )}
